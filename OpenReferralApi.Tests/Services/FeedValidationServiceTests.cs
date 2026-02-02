@@ -51,6 +51,27 @@ public class FeedValidationServiceTests
             _loggerMock.Object);
     }
 
+    private FeedValidationService CreateService(out Mock<IMongoCollection<ServiceFeed>> collectionMock)
+    {
+        var mongoClientMock = new Mock<IMongoClient>();
+        var mongoDatabaseMock = new Mock<IMongoDatabase>();
+        collectionMock = new Mock<IMongoCollection<ServiceFeed>>();
+
+        mongoClientMock
+            .Setup(x => x.GetDatabase("test-db", null))
+            .Returns(mongoDatabaseMock.Object);
+
+        mongoDatabaseMock
+            .Setup(x => x.GetCollection<ServiceFeed>("services", null))
+            .Returns(collectionMock.Object);
+
+        return new FeedValidationService(
+            mongoClientMock.Object,
+            _configuration,
+            _validationServiceMock.Object,
+            _loggerMock.Object);
+    }
+
     [Test]
     public async Task ValidateSingleFeedAsync_WithValidFeed_ReturnsSuccessResult()
     {
@@ -153,5 +174,25 @@ public class FeedValidationServiceTests
         result.IsUp.Should().BeFalse();
         result.IsValid.Should().BeFalse();
         result.ErrorMessage.Should().Contain("timed out");
+    }
+
+    [Test]
+    public async Task ValidateSingleFeedAsync_WithUnexpectedError_ReturnsDownFeed()
+    {
+        // Arrange
+        var service = CreateService();
+        var feed = new ServiceFeed { Id = "1", UrlField = "https://example.com" };
+
+        _validationServiceMock
+            .Setup(x => x.ValidateOpenApiSpecificationAsync(It.IsAny<OpenApiValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Unexpected failure"));
+
+        // Act
+        var result = await service.ValidateSingleFeedAsync(feed);
+
+        // Assert
+        result.IsUp.Should().BeFalse();
+        result.IsValid.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("Unexpected error");
     }
 }

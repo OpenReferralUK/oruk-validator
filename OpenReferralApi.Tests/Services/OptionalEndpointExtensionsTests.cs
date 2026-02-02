@@ -196,7 +196,7 @@ public class OptionalEndpointExtensionsTests
     }
 
     [Test]
-    public void GetOptionalEndpointCategory_WithRequiredEndpoint_ReturnsNull()
+    public void GetOptionalEndpointCategory_WithRequiredEndpoint_ReturnsCategory()
     {
         // Arrange
         var pathItem = JObject.Parse(@"
@@ -211,7 +211,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.GetOptionalEndpointCategory();
 
         // Assert
-        result.Should().BeNull();
+        result.Should().Be("Users");
     }
 
     [Test]

@@ -95,6 +95,29 @@ public class RequestProcessingServiceTests
     }
 
     [Test]
+    public async Task ExecuteWithConcurrencyControlAsync_ThrottlingDisabled_ThrowsWhenLimitExceeded()
+    {
+        // Arrange
+        var options = new ValidationOptions { MaxConcurrentRequests = 1, UseThrottling = false };
+        using var gate = new SemaphoreSlim(0, 1);
+
+        var firstTask = _service.ExecuteWithConcurrencyControlAsync<int>(
+            async ct =>
+            {
+                await gate.WaitAsync(ct);
+                return 1;
+            },
+            options);
+
+        // Act & Assert
+        Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await _service.ExecuteWithConcurrencyControlAsync<int>(async ct => 2, options));
+
+        gate.Release();
+        await firstTask;
+    }
+
+    [Test]
     public async Task ExecuteWithConcurrencyControlAsync_WithCancellation_RespondsToCancel()
     {
         // Arrange
@@ -266,6 +289,24 @@ public class RequestProcessingServiceTests
         // Assert - with exponential backoff, should take more than immediate retries
         stopwatch.Stop();
         stopwatch.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(10));
+    }
+
+    [Test]
+    public void ExecuteWithRetryAsync_WithCancellation_ThrowsOperationCanceled()
+    {
+        // Arrange
+        var options = new ValidationOptions { RetryAttempts = 2, RetryDelaySeconds = 1 };
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromMilliseconds(50));
+
+        // Act & Assert - TaskCanceledException is a subclass of OperationCanceledException
+        var exception = Assert.CatchAsync<OperationCanceledException>(async () =>
+            await _service.ExecuteWithRetryAsync<string>(async ct =>
+            {
+                throw new HttpRequestException("Network error");
+            }, options, cts.Token));
+        
+        Assert.That(exception, Is.Not.Null);
     }
 
     #endregion
