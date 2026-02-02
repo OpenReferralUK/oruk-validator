@@ -72,15 +72,11 @@ RUN chown -R appuser:appuser /app
 # Switch to non-root user
 USER appuser
 
-# Set environment variables
-ENV ASPNETCORE_URLS=http://*:80
-
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD curl -f http://localhost:${PORT:-80}/health-check/live || exit 1
 
-# Run the application (using JSON exec form for proper signal handling)
-CMD ["dotnet", "OpenReferralApi.dll"]
-
+# Run the application
+CMD ASPNETCORE_URLS=http://*:$PORT dotnet OpenReferralApi.dll
 
 # For local development use ENTRYPOINT & comment out CMD line
 # ENTRYPOINT ["dotnet", "OpenReferralApi.dll"]
