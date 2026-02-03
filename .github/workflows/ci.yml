@@ -315,7 +315,7 @@ jobs:
         run: heroku stack:set container --app staging-oruk-api
 
       - name: Deploy to Heroku Staging
-        uses: akhileshns/heroku-deploy@v3.14.15
+        uses: akhileshns/heroku-deploy@v4
         with:
           heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
           heroku_app_name: staging-oruk-api
@@ -342,7 +342,7 @@ jobs:
         run: curl https://cli-assets.heroku.com/install.sh | sh
 
       - name: Deploy to Heroku Production
-        uses: akhileshns/heroku-deploy@v3.14.15
+        uses: akhileshns/heroku-deploy@v4
         with:
           heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
           heroku_app_name: ${{ vars.HEROKU_APP_NAME }}
