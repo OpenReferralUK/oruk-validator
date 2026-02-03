@@ -76,7 +76,6 @@ USER appuser
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD curl -f http://localhost:${PORT:-80}/health-check/live || exit 1
 
 # Run the application
-ENV ASPNETCORE_URLS=http://*:$PORT
 CMD ["dotnet", "OpenReferralApi.dll"]
 
 # For local development use ENTRYPOINT & comment out CMD line
