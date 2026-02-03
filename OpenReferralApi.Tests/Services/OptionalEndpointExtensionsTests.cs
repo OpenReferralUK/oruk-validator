@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
@@ -26,7 +25,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.IsOptionalEndpoint();
 
         // Assert
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -45,7 +44,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.IsOptionalEndpoint();
 
         // Assert
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -64,7 +63,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.IsOptionalEndpoint();
 
         // Assert
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -86,7 +85,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.IsOptionalEndpoint();
 
         // Assert
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -104,7 +103,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.IsOptionalEndpoint();
 
         // Assert
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -117,7 +116,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.IsOptionalEndpoint();
 
         // Assert
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -130,7 +129,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.IsOptionalEndpoint();
 
         // Assert
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     #endregion
@@ -153,9 +152,9 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.GetOptionalEndpointCategory();
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().NotBe("Optional");
-        result.Should().BeOneOf("Users", "Public");
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.Not.EqualTo("Optional"));
+        Assert.That(result, Is.AnyOf("Users", "Public"));
     }
 
     [Test]
@@ -174,7 +173,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.GetOptionalEndpointCategory();
 
         // Assert
-        result.Should().Be("Optional");
+        Assert.That(result, Is.EqualTo("Optional"));
     }
 
     [Test]
@@ -192,7 +191,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.GetOptionalEndpointCategory();
 
         // Assert
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -211,7 +210,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.GetOptionalEndpointCategory();
 
         // Assert
-        result.Should().Be("Users");
+        Assert.That(result, Is.EqualTo("Users"));
     }
 
     [Test]
@@ -234,7 +233,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.GetOptionalEndpointCategory();
 
         // Assert
-        result.Should().NotBeNull();
+        Assert.That(result, Is.Not.Null);
     }
 
     #endregion
@@ -248,7 +247,7 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.IsAcceptableOptionalEndpointResponse(404, isOptionalEndpoint: true);
 
         // Assert
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -258,7 +257,7 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.IsAcceptableOptionalEndpointResponse(501, isOptionalEndpoint: true);
 
         // Assert
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -268,7 +267,7 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.IsAcceptableOptionalEndpointResponse(503, isOptionalEndpoint: true);
 
         // Assert
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -278,7 +277,7 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.IsAcceptableOptionalEndpointResponse(500, isOptionalEndpoint: true);
 
         // Assert
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -288,7 +287,7 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.IsAcceptableOptionalEndpointResponse(200, isOptionalEndpoint: true);
 
         // Assert
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -298,7 +297,7 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.IsAcceptableOptionalEndpointResponse(404, isOptionalEndpoint: false);
 
         // Assert
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     #endregion
@@ -321,11 +320,11 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(404, pathItem);
 
         // Assert
-        result.Should().NotBeNull();
-        result.IsOptional.Should().BeTrue();
-        result.ValidationStatus.Should().Be(OptionalEndpointStatus.NotImplemented);
-        result.IsValid.Should().BeTrue();
-        result.StatusCode.Should().Be(404);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.IsOptional, Is.True);
+        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.NotImplemented));
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.StatusCode, Is.EqualTo(404));
     }
 
     [Test]
@@ -344,11 +343,11 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(200, pathItem);
 
         // Assert
-        result.Should().NotBeNull();
-        result.IsOptional.Should().BeTrue();
-        result.ValidationStatus.Should().Be(OptionalEndpointStatus.Implemented);
-        result.IsValid.Should().BeTrue();
-        result.RequiresSchemaValidation.Should().BeTrue();
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.IsOptional, Is.True);
+        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Implemented));
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.RequiresSchemaValidation, Is.True);
     }
 
     [Test]
@@ -367,10 +366,10 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(500, pathItem);
 
         // Assert
-        result.Should().NotBeNull();
-        result.IsOptional.Should().BeTrue();
-        result.ValidationStatus.Should().Be(OptionalEndpointStatus.Error);
-        result.IsValid.Should().BeFalse();
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.IsOptional, Is.True);
+        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Error));
+        Assert.That(result.IsValid, Is.False);
     }
 
     [Test]
@@ -388,11 +387,11 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(200, pathItem);
 
         // Assert
-        result.Should().NotBeNull();
-        result.IsOptional.Should().BeFalse();
-        result.ValidationStatus.Should().Be(OptionalEndpointStatus.Required);
-        result.IsValid.Should().BeTrue();
-        result.RequiresSchemaValidation.Should().BeTrue();
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.IsOptional, Is.False);
+        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Required));
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.RequiresSchemaValidation, Is.True);
     }
 
     [Test]
@@ -410,11 +409,11 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(500, pathItem);
 
         // Assert
-        result.Should().NotBeNull();
-        result.IsOptional.Should().BeFalse();
-        result.ValidationStatus.Should().Be(OptionalEndpointStatus.Required);
-        result.IsValid.Should().BeFalse();
-        result.RequiresSchemaValidation.Should().BeFalse();
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.IsOptional, Is.False);
+        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Required));
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.RequiresSchemaValidation, Is.False);
     }
 
     [Test]
@@ -433,7 +432,7 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(200, pathItem);
 
         // Assert
-        result.Category.Should().NotBeNull();
+        Assert.That(result.Category, Is.Not.Null);
     }
 
     [Test]
@@ -451,8 +450,8 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(201, pathItem);
 
         // Assert
-        result.IsValid.Should().BeTrue();
-        result.ValidationStatus.Should().Be(OptionalEndpointStatus.Required);
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Required));
     }
 
     [Test]
@@ -471,9 +470,9 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(503, pathItem);
 
         // Assert
-        result.IsOptional.Should().BeTrue();
-        result.ValidationStatus.Should().Be(OptionalEndpointStatus.NotImplemented);
-        result.IsValid.Should().BeTrue();
+        Assert.That(result.IsOptional, Is.True);
+        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.NotImplemented));
+        Assert.That(result.IsValid, Is.True);
     }
 
     #endregion
@@ -503,7 +502,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.IsOptionalEndpoint();
 
         // Assert
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     #endregion
@@ -526,7 +525,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.IsOptionalEndpoint();
 
         // Assert
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -545,8 +544,8 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(404, pathItem);
 
         // Assert
-        result.IsValid.Should().BeTrue();
-        result.Message.Should().Contain("acceptable");
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.Message, Does.Contain("acceptable"));
     }
 
     [Test]
@@ -569,7 +568,7 @@ public class OptionalEndpointExtensionsTests
         var result = pathItem.GetOptionalEndpointCategory();
 
         // Assert
-        result.Should().NotBeNull();
+        Assert.That(result, Is.Not.Null);
     }
 
     #endregion

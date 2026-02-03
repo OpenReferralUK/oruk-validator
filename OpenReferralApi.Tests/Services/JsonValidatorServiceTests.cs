@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Newtonsoft.Json.Schema;
@@ -98,11 +97,11 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        result.IsValid.Should().BeTrue();
-        result.Errors.Should().BeEmpty();
-        result.Metadata.Should().NotBeNull();
-        result.Metadata!.SchemaTitle.Should().Be("Person");
-        result.Metadata.DataSource.Should().Be("direct");
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.Errors, Is.Empty);
+        Assert.That(result.Metadata, Is.Not.Null);
+        Assert.That(result.Metadata!.SchemaTitle, Is.EqualTo("Person"));
+        Assert.That(result.Metadata.DataSource, Is.EqualTo("direct"));
     }
 
     [Test]
@@ -126,9 +125,9 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().NotBeEmpty();
-        result.Errors.Should().Contain(e => e.ErrorCode == "VALIDATION_ERROR");
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.Errors, Is.Not.Empty);
+        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(e => e.ErrorCode == "VALIDATION_ERROR"));
     }
 
     [Test]
@@ -159,10 +158,10 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        result.IsValid.Should().BeTrue();
-        result.Errors.Should().BeEmpty();
-        result.Metadata.Should().NotBeNull();
-        result.Metadata!.DataSource.Should().Be(dataUrl);
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.Errors, Is.Empty);
+        Assert.That(result.Metadata, Is.Not.Null);
+        Assert.That(result.Metadata!.DataSource, Is.EqualTo(dataUrl));
     }
 
     [Test]
@@ -181,8 +180,8 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateWithSchemaUriAsync(new { name = "Ada" }, schemaUri);
 
         // Assert
-        result.IsValid.Should().BeTrue();
-        result.Errors.Should().BeEmpty();
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.Errors, Is.Empty);
     }
 
     [Test]
@@ -195,8 +194,8 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateSchemaAsync(schema);
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().ContainSingle(error => error.ErrorCode == "MISSING_TYPE");
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.Errors, Has.Exactly(1).Matches<OpenReferralApi.Core.Models.ValidationError>(error => error.ErrorCode == "MISSING_TYPE"));
     }
 
     [Test]
@@ -220,7 +219,7 @@ public class JsonValidatorServiceTests
         var result = await _service.IsValidAsync(request);
 
         // Assert
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -277,8 +276,8 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateSchemaAsync(new { type = "object" });
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().ContainSingle(error => error.ErrorCode == "SCHEMA_VALIDATION_ERROR");
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.Errors, Has.Exactly(1).Matches<OpenReferralApi.Core.Models.ValidationError>(error => error.ErrorCode == "SCHEMA_VALIDATION_ERROR"));
     }
 
     private void SetupHttpMock(string schemaJson, string dataJson)

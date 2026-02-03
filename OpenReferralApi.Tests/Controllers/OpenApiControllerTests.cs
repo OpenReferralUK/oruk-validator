@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -56,7 +55,7 @@ public class OpenApiControllerTests
         var result = await _controller.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.Result.Should().BeOfType<OkObjectResult>();
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
         _validationServiceMock.Verify(x => x.ValidateOpenApiSpecificationAsync(request, It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -74,6 +73,6 @@ public class OpenApiControllerTests
         var result = await _controller.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.Result.Should().BeOfType<BadRequestObjectResult>();
+        Assert.That(result.Result, Is.TypeOf<BadRequestObjectResult>());
     }
 }

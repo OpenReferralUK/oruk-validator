@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
@@ -26,8 +25,8 @@ public class FeedValidationHealthCheckTests
         var result = await healthCheck.CheckHealthAsync(new HealthCheckContext());
 
         // Assert
-        result.Status.Should().Be(HealthStatus.Healthy);
-        result.Description.Should().Be("Feed validation is disabled");
+        Assert.That(result.Status, Is.EqualTo(HealthStatus.Healthy));
+        Assert.That(result.Description, Is.EqualTo("Feed validation is disabled"));
     }
 
     [Test]
@@ -46,8 +45,8 @@ public class FeedValidationHealthCheckTests
         var result = await healthCheck.CheckHealthAsync(new HealthCheckContext());
 
         // Assert
-        result.Status.Should().Be(HealthStatus.Degraded);
-        result.Description.Should().Be("Feed validation service is not configured");
+        Assert.That(result.Status, Is.EqualTo(HealthStatus.Degraded));
+        Assert.That(result.Description, Is.EqualTo("Feed validation service is not configured"));
     }
 
     [Test]
@@ -65,8 +64,8 @@ public class FeedValidationHealthCheckTests
         var result = await healthCheck.CheckHealthAsync(new HealthCheckContext());
 
         // Assert
-        result.Status.Should().Be(HealthStatus.Healthy);
-        result.Description.Should().Be("Feed validation service is configured");
+        Assert.That(result.Status, Is.EqualTo(HealthStatus.Healthy));
+        Assert.That(result.Description, Is.EqualTo("Feed validation service is configured"));
     }
 
     [Test]
@@ -81,8 +80,8 @@ public class FeedValidationHealthCheckTests
         var result = await healthCheck.CheckHealthAsync(new HealthCheckContext());
 
         // Assert
-        result.Status.Should().Be(HealthStatus.Healthy);
-        result.Description.Should().Be("Feed validation is disabled");
+        Assert.That(result.Status, Is.EqualTo(HealthStatus.Healthy));
+        Assert.That(result.Description, Is.EqualTo("Feed validation is disabled"));
     }
 
     private static IConfiguration BuildConfiguration(Dictionary<string, string?> settings)

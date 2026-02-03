@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Newtonsoft.Json.Schema;
@@ -78,7 +77,7 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.Should().NotBeNull();
+        Assert.That(result, Is.Not.Null);
     }
 
     [Test]
@@ -97,8 +96,8 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.Metadata.Should().NotBeNull();
-        result.Metadata.BaseUrl.Should().Be("https://api.example.com");
+        Assert.That(result.Metadata, Is.Not.Null);
+        Assert.That(result.Metadata!.BaseUrl, Is.EqualTo("https://api.example.com"));
     }
 
     [Test]
@@ -116,7 +115,7 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.Duration.Should().BeGreaterThan(TimeSpan.Zero);
+        Assert.That(result.Duration, Is.GreaterThan(TimeSpan.Zero));
     }
 
     [Test]
@@ -134,7 +133,7 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.Summary.Should().NotBeNull();
+        Assert.That(result.Summary, Is.Not.Null);
     }
 
     #endregion
@@ -157,8 +156,8 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.SpecificationValidation.Should().NotBeNull();
-        result.SpecificationValidation?.OpenApiVersion.Should().Contain("3.0");
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
+        Assert.That(result.SpecificationValidation!.OpenApiVersion, Does.Contain("3.0"));
     }
 
     [Test]
@@ -177,8 +176,8 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.SpecificationValidation.Should().NotBeNull();
-        result.SpecificationValidation?.Errors.Should().NotBeNull();
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
+        Assert.That(result.SpecificationValidation!.Errors, Is.Not.Null);
     }
 
     #endregion
@@ -201,7 +200,7 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.SpecificationValidation.Should().BeNull();
+        Assert.That(result.SpecificationValidation, Is.Null);
     }
 
     [Test]
@@ -220,7 +219,7 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.SpecificationValidation.Should().NotBeNull();
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
     }
 
     [Test]
@@ -238,7 +237,7 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.Should().NotBeNull();
+        Assert.That(result, Is.Not.Null);
     }
 
     #endregion
@@ -268,9 +267,9 @@ public class OpenApiValidationServiceTests
             var result = service.ValidateOpenApiSpecificationAsync(request).GetAwaiter().GetResult();
 
             // Assert
-            result.IsValid.Should().BeFalse();
-            result.Summary.Should().NotBeNull();
-            result.Metadata.Should().BeNull();
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Summary, Is.Not.Null);
+            Assert.That(result.Metadata, Is.Null);
         }
         finally
         {
@@ -301,9 +300,9 @@ public class OpenApiValidationServiceTests
             var result = service.ValidateOpenApiSpecificationAsync(request).GetAwaiter().GetResult();
 
             // Assert
-            result.IsValid.Should().BeFalse();
-            result.Summary.Should().NotBeNull();
-            result.Metadata.Should().BeNull();
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Summary, Is.Not.Null);
+            Assert.That(result.Metadata, Is.Null);
         }
         finally
         {
@@ -337,9 +336,9 @@ public class OpenApiValidationServiceTests
             var result = service.ValidateOpenApiSpecificationAsync(request).GetAwaiter().GetResult();
 
             // Assert
-            result.IsValid.Should().BeFalse();
-            result.Summary.Should().NotBeNull();
-            result.Metadata.Should().BeNull();
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Summary, Is.Not.Null);
+            Assert.That(result.Metadata, Is.Null);
         }
         finally
         {
@@ -384,8 +383,8 @@ public class OpenApiValidationServiceTests
         var result = _service.ValidateOpenApiSpecificationAsync(request, cts.Token).GetAwaiter().GetResult();
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Summary.Should().NotBeNull();
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.Summary, Is.Not.Null);
     }
 
     #endregion
@@ -409,10 +408,10 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.Should().NotBeNull();
-        result.EndpointTests.Should().NotBeEmpty();
-        result.EndpointTests.SelectMany(e => e.TestResults).Should().NotBeEmpty();
-        result.EndpointTests.SelectMany(e => e.TestResults).All(tr => tr.ResponseBody == null).Should().BeTrue();
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.EndpointTests, Is.Not.Empty);
+        Assert.That(result.EndpointTests.SelectMany(e => e.TestResults), Is.Not.Empty);
+        Assert.That(result.EndpointTests.SelectMany(e => e.TestResults).All(tr => tr.ResponseBody == null), Is.True);
     }
 
     [Test]
@@ -432,9 +431,9 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.Should().NotBeNull();
-        result.EndpointTests.Should().NotBeEmpty();
-        result.EndpointTests.All(e => e.TestResults.Count == 0).Should().BeTrue();
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.EndpointTests, Is.Not.Empty);
+        Assert.That(result.EndpointTests.All(e => e.TestResults.Count == 0), Is.True);
     }
 
     #endregion
@@ -480,9 +479,9 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.EndpointTests.Should().HaveCount(1);
-        result.EndpointTests[0].TestResults.Should().HaveCount(3);
-        result.EndpointTests[0].TestResults.All(tr => tr.IsSuccess).Should().BeTrue();
+        Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+        Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(3));
+        Assert.That(result.EndpointTests[0].TestResults.All(tr => tr.IsSuccess), Is.True);
     }
 
     [Test]
@@ -514,11 +513,11 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.EndpointTests.Should().HaveCount(1);
-        result.EndpointTests[0].TestResults.Should().HaveCount(1);
-        result.EndpointTests[0].TestResults[0].ValidationResult.Should().NotBeNull();
-        result.EndpointTests[0].TestResults[0].ValidationResult!.Errors
-            .Should().Contain(e => e.ErrorCode == "EMPTY_FEED_WARNING");
+        Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+        Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(1));
+        Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
+        Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors,
+            Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
     }
 
     [Test]
@@ -556,12 +555,12 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.EndpointTests.Should().HaveCount(1);
-        result.EndpointTests[0].Status.Should().Be("Warning");
-        result.EndpointTests[0].TestResults.Should().HaveCount(1);
-        result.EndpointTests[0].TestResults[0].ValidationResult.Should().NotBeNull();
-        result.EndpointTests[0].TestResults[0].ValidationResult!.Errors
-            .Should().Contain(e => e.ErrorCode == "OPTIONAL_ENDPOINT_NON_SUCCESS" && e.Severity == "Warning");
+        Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+        Assert.That(result.EndpointTests[0].Status, Is.EqualTo("Warning"));
+        Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(1));
+        Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
+        Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors,
+            Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(e => e.ErrorCode == "OPTIONAL_ENDPOINT_NON_SUCCESS" && e.Severity == "Warning"));
     }
 
     [Test]
@@ -597,9 +596,9 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        result.EndpointTests.Should().HaveCount(1);
-        result.EndpointTests[0].Status.Should().Be("Skipped");
-        result.EndpointTests[0].TestResults.Should().BeEmpty();
+        Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+        Assert.That(result.EndpointTests[0].Status, Is.EqualTo("Skipped"));
+        Assert.That(result.EndpointTests[0].TestResults, Is.Empty);
     }
 
     #endregion

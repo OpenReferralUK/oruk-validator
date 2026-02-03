@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Newtonsoft.Json.Linq;
@@ -42,11 +41,11 @@ public class JsonSchemaResolverServiceTests
         var result = await _service.CreateSchemaFromJsonAsync(schemaJson);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Type.Should().Be(JSchemaType.Object);
-        result.Properties.Should().HaveCount(2);
-        result.Properties.Should().ContainKey("name");
-        result.Properties.Should().ContainKey("age");
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Type, Is.EqualTo(JSchemaType.Object));
+        Assert.That(result.Properties, Has.Count.EqualTo(2));
+        Assert.That(result.Properties, Does.ContainKey("name"));
+        Assert.That(result.Properties, Does.ContainKey("age"));
     }
 
     [Test]
@@ -66,8 +65,8 @@ public class JsonSchemaResolverServiceTests
         var result = await _service.CreateSchemaFromJsonAsync(schemaJson, documentUri);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Type.Should().Be(JSchemaType.Object);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Type, Is.EqualTo(JSchemaType.Object));
     }
 
     [Test]
@@ -94,7 +93,7 @@ public class JsonSchemaResolverServiceTests
         var result = await _service.CreateSchemaFromJsonAsync(schemaJson);
 
         // Assert
-        result.Should().NotBeNull();
+        Assert.That(result, Is.Not.Null);
     }
 
     #endregion
@@ -130,8 +129,8 @@ public class JsonSchemaResolverServiceTests
         var result = await service.CreateSchemaFromUriAsync(schemaUri);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Type.Should().Be(JSchemaType.Object);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Type, Is.EqualTo(JSchemaType.Object));
     }
 
     #endregion
@@ -155,8 +154,8 @@ public class JsonSchemaResolverServiceTests
         var result = await _service.ResolveSchemaAsync(schema);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().Be(schema);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.EqualTo(schema));
     }
 
     #endregion
@@ -195,8 +194,8 @@ public class JsonSchemaResolverServiceTests
         var result = await _service.CreateSchemaWithOpenApiContextAsync(schemaJson, openApiDoc, null);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Properties.Should().NotBeEmpty();
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Properties, Is.Not.Empty);
     }
 
     [Test]
@@ -233,7 +232,7 @@ public class JsonSchemaResolverServiceTests
         var result = await _service.CreateSchemaWithOpenApiContextAsync(schemaJson, openApiDoc, null);
 
         // Assert
-        result.Should().NotBeNull();
+        Assert.That(result, Is.Not.Null);
     }
 
     [Test]
@@ -267,7 +266,7 @@ public class JsonSchemaResolverServiceTests
         var result = await _service.CreateSchemaWithOpenApiContextAsync(schemaJson, openApiDoc, null);
 
         // Assert - should not throw and should handle the circular reference
-        result.Should().NotBeNull();
+        Assert.That(result, Is.Not.Null);
     }
 
     [Test]
@@ -303,7 +302,7 @@ public class JsonSchemaResolverServiceTests
         var result = await _service.CreateSchemaWithOpenApiContextAsync(schemaJson, openApiDoc, documentUri);
 
         // Assert
-        result.Should().NotBeNull();
+        Assert.That(result, Is.Not.Null);
     }
 
     #endregion

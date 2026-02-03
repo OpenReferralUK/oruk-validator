@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -55,8 +54,8 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(null!);
 
         // Assert
-        url.Should().BeNull();
-        reason.Should().BeNull();
+        Assert.That(url, Is.Null);
+        Assert.That(reason, Is.Null);
     }
 
     [Test]
@@ -66,8 +65,8 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync("");
 
         // Assert
-        url.Should().BeNull();
-        reason.Should().BeNull();
+        Assert.That(url, Is.Null);
+        Assert.That(reason, Is.Null);
     }
 
     [Test]
@@ -84,8 +83,8 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        url.Should().Be(openApiUrl);
-        reason.Should().Contain("openapi_url field");
+        Assert.That(url, Is.EqualTo(openApiUrl));
+        Assert.That(reason, Does.Contain("openapi_url field"));
     }
 
     [Test]
@@ -102,8 +101,8 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        url.Should().Be(openApiUrl);
-        reason.Should().Contain("openapi_url field");
+        Assert.That(url, Is.EqualTo(openApiUrl));
+        Assert.That(reason, Does.Contain("openapi_url field"));
     }
 
     [Test]
@@ -120,8 +119,8 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        url.Should().Be(openApiUrl);
-        reason.Should().Contain("openapi_url field");
+        Assert.That(url, Is.EqualTo(openApiUrl));
+        Assert.That(reason, Does.Contain("openapi_url field"));
     }
 
     [Test]
@@ -137,8 +136,8 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        url.Should().Contain("V1.0-UK/open_api.json");
-        reason.Should().Contain("Standard version 1.0");
+        Assert.That(url, Does.Contain("V1.0-UK/open_api.json"));
+        Assert.That(reason, Does.Contain("Standard version 1.0"));
     }
 
     [Test]
@@ -154,8 +153,8 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        url.Should().Contain("V3.0-UK/open_api.json");
-        reason.Should().Contain("Standard version 3.0");
+        Assert.That(url, Does.Contain("V3.0-UK/open_api.json"));
+        Assert.That(reason, Does.Contain("Standard version 3.0"));
     }
 
     [Test]
@@ -171,8 +170,8 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        url.Should().Contain("V3.0-UK/open_api.json");
-        reason.Should().Contain("Standard version HSDS-UK-3.0");
+        Assert.That(url, Does.Contain("V3.0-UK/open_api.json"));
+        Assert.That(reason, Does.Contain("Standard version HSDS-UK-3.0"));
     }
 
     [Test]
@@ -188,8 +187,8 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        url.Should().Contain("V3.1-UK/open_api.json");
-        reason.Should().Contain("Standard version V3.1");
+        Assert.That(url, Does.Contain("V3.1-UK/open_api.json"));
+        Assert.That(reason, Does.Contain("Standard version V3.1"));
     }
 
     [Test]
@@ -205,9 +204,9 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        url.Should().Contain("V1.0-UK/open_api.json");
-        reason.Should().Contain("Defaulted to HSDS-UK 1.0");
-        reason.Should().Contain("no version or openapi_url found");
+        Assert.That(url, Does.Contain("V1.0-UK/open_api.json"));
+        Assert.That(reason, Does.Contain("Defaulted to HSDS-UK 1.0"));
+        Assert.That(reason, Does.Contain("no version or openapi_url found"));
     }
 
     [Test]
@@ -222,9 +221,9 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        url.Should().Contain("V1.0-UK/open_api.json");
-        reason.Should().Contain("Defaulted to HSDS-UK 1.0");
-        reason.Should().Contain("base URL request failed");
+        Assert.That(url, Does.Contain("V1.0-UK/open_api.json"));
+        Assert.That(reason, Does.Contain("Defaulted to HSDS-UK 1.0"));
+        Assert.That(reason, Does.Contain("base URL request failed"));
     }
 
     [Test]
@@ -240,9 +239,9 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        url.Should().Contain("V1.0-UK/open_api.json");
-        reason.Should().Contain("Defaulted to HSDS-UK 1.0");
-        reason.Should().Contain("failed to parse");
+        Assert.That(url, Does.Contain("V1.0-UK/open_api.json"));
+        Assert.That(reason, Does.Contain("Defaulted to HSDS-UK 1.0"));
+        Assert.That(reason, Does.Contain("failed to parse"));
     }
 
     [Test]
@@ -263,9 +262,9 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        url.Should().Contain("V1.0-UK/open_api.json");
-        reason.Should().Contain("Defaulted to HSDS-UK 1.0");
-        reason.Should().Contain("error requesting base URL");
+        Assert.That(url, Does.Contain("V1.0-UK/open_api.json"));
+        Assert.That(reason, Does.Contain("Defaulted to HSDS-UK 1.0"));
+        Assert.That(reason, Does.Contain("error requesting base URL"));
     }
 
     [Test]
@@ -281,8 +280,8 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        url.Should().Contain("V1.0-UK/open_api.json");
-        reason.Should().Contain("Defaulted to HSDS-UK 1.0");
+        Assert.That(url, Does.Contain("V1.0-UK/open_api.json"));
+        Assert.That(reason, Does.Contain("Defaulted to HSDS-UK 1.0"));
     }
 
     [Test]
@@ -298,8 +297,8 @@ public class OpenApiDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        url.Should().Contain("V3.0-UK/open_api.json");
-        reason.Should().Contain("Standard version 3.0");
+        Assert.That(url, Does.Contain("V3.0-UK/open_api.json"));
+        Assert.That(reason, Does.Contain("Standard version 3.0"));
     }
 
     private void SetupHttpResponse(HttpStatusCode statusCode, string content)

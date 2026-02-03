@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Moq.Protected;
@@ -43,9 +42,9 @@ public class PathParsingServiceTests
         var result = await _service.ValidateAndParseUriAsync(validUrl);
 
         // Assert
-        result.Should().NotBeNull();
-        result.AbsoluteUri.Should().Be(validUrl);
-        result.Scheme.Should().Be("https");
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.AbsoluteUri, Is.EqualTo(validUrl));
+        Assert.That(result.Scheme, Is.EqualTo("https"));
     }
 
     [Test]
@@ -53,8 +52,8 @@ public class PathParsingServiceTests
     {
         // Act & Assert
         var act = async () => await _service.ValidateAndParseUriAsync(null!);
-        act.Should().ThrowAsync<ArgumentException>()
-            .WithMessage("*cannot be null or empty*");
+        var ex = Assert.ThrowsAsync<ArgumentException>(async () => await act());
+        Assert.That(ex!.Message, Does.Contain("cannot be null or empty"));
     }
 
     [Test]
@@ -62,7 +61,7 @@ public class PathParsingServiceTests
     {
         // Act & Assert
         var act = async () => await _service.ValidateAndParseUriAsync("");
-        act.Should().ThrowAsync<ArgumentException>();
+        Assert.ThrowsAsync<ArgumentException>(async () => await act());
     }
 
     [Test]
@@ -70,8 +69,8 @@ public class PathParsingServiceTests
     {
         // Act & Assert
         var act = async () => await _service.ValidateAndParseUriAsync("ssh://example.com");
-        act.Should().ThrowAsync<ArgumentException>()
-            .WithMessage("*scheme*not supported*");
+        var ex = Assert.ThrowsAsync<ArgumentException>(async () => await act());
+        Assert.That(ex!.Message, Does.Contain("not supported"));
     }
 
     [Test]
@@ -79,8 +78,8 @@ public class PathParsingServiceTests
     {
         // Act & Assert
         var act = async () => await _service.ValidateAndParseUriAsync("not a valid url");
-        act.Should().ThrowAsync<ArgumentException>()
-            .WithMessage("*Invalid*");
+        var ex = Assert.ThrowsAsync<ArgumentException>(async () => await act());
+        Assert.That(ex!.Message, Does.Contain("Invalid"));
     }
 
     #endregion
@@ -97,8 +96,8 @@ public class PathParsingServiceTests
         var result = await _service.ValidateAndParseDataUrlAsync(validUrl);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Scheme.Should().Be("https");
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Scheme, Is.EqualTo("https"));
     }
 
     [Test]
@@ -109,8 +108,8 @@ public class PathParsingServiceTests
 
         // Act & Assert
         var act = async () => await _service.ValidateAndParseDataUrlAsync(ftpUrl);
-        act.Should().ThrowAsync<ArgumentException>()
-            .WithMessage("*scheme*not supported*");
+        var ex = Assert.ThrowsAsync<ArgumentException>(async () => await act());
+        Assert.That(ex!.Message, Does.Contain("not supported"));
     }
 
     #endregion
@@ -127,8 +126,8 @@ public class PathParsingServiceTests
         var result = await _service.ValidateAndParseSchemaUriAsync(schemaUrl);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Scheme.Should().Be("https");
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Scheme, Is.EqualTo("https"));
     }
 
     [Test]
@@ -141,8 +140,8 @@ public class PathParsingServiceTests
         var result = await _service.ValidateAndParseSchemaUriAsync(fileUrl);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Scheme.Should().Be("file");
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Scheme, Is.EqualTo("file"));
     }
 
     #endregion
@@ -174,11 +173,11 @@ public class PathParsingServiceTests
         var result = await _service.CheckUriAccessibilityAsync(uri);
 
         // Assert
-        result.Should().NotBeNull();
-        result.IsAccessible.Should().BeTrue();
-        result.StatusCode.Should().Be(200);
-        result.ContentType.Should().Be("application/json");
-        result.ContentLength.Should().Be(12);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.IsAccessible, Is.True);
+        Assert.That(result.StatusCode, Is.EqualTo(200));
+        Assert.That(result.ContentType, Is.EqualTo("application/json"));
+        Assert.That(result.ContentLength, Is.EqualTo(12));
     }
 
     [Test]
@@ -204,10 +203,10 @@ public class PathParsingServiceTests
         var result = await _service.CheckUriAccessibilityAsync(uri);
 
         // Assert
-        result.Should().NotBeNull();
-        result.IsAccessible.Should().BeFalse();
-        result.StatusCode.Should().Be(404);
-        result.ErrorMessage.Should().Contain("NotFound");
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.IsAccessible, Is.False);
+        Assert.That(result.StatusCode, Is.EqualTo(404));
+        Assert.That(result.ErrorMessage, Does.Contain("NotFound"));
     }
 
     [Test]
@@ -224,10 +223,10 @@ public class PathParsingServiceTests
             var result = await _service.CheckUriAccessibilityAsync(fileUri);
 
             // Assert
-            result.Should().NotBeNull();
-            result.IsAccessible.Should().BeTrue();
-            result.StatusCode.Should().Be(200);
-            result.ContentLength.Should().BeGreaterThan(0);
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsAccessible, Is.True);
+            Assert.That(result.StatusCode, Is.EqualTo(200));
+            Assert.That(result.ContentLength, Is.GreaterThan(0));
         }
         finally
         {
@@ -245,10 +244,10 @@ public class PathParsingServiceTests
         var result = await _service.CheckUriAccessibilityAsync(fileUri);
 
         // Assert
-        result.Should().NotBeNull();
-        result.IsAccessible.Should().BeFalse();
-        result.StatusCode.Should().Be(404);
-        result.ErrorMessage.Should().Contain("not found");
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.IsAccessible, Is.False);
+        Assert.That(result.StatusCode, Is.EqualTo(404));
+        Assert.That(result.ErrorMessage, Does.Contain("not found"));
     }
 
     [Test]
@@ -261,9 +260,9 @@ public class PathParsingServiceTests
         var result = await _service.CheckUriAccessibilityAsync(ftpUri);
 
         // Assert
-        result.Should().NotBeNull();
-        result.IsAccessible.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("Unsupported scheme");
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.IsAccessible, Is.False);
+        Assert.That(result.ErrorMessage, Does.Contain("Unsupported scheme"));
     }
 
     [Test]
@@ -285,8 +284,8 @@ public class PathParsingServiceTests
         var result = await _service.CheckUriAccessibilityAsync(uri, options);
 
         // Assert
-        result.Should().NotBeNull();
-        result.IsAccessible.Should().BeFalse();
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.IsAccessible, Is.False);
     }
 
     #endregion
@@ -304,8 +303,8 @@ public class PathParsingServiceTests
         var result = _service.ResolveRelativeUri(baseUri, relativeUri);
 
         // Assert
-        result.Should().NotBeNull();
-        result.AbsoluteUri.Should().Be("https://example.com/api/v1/schemas/schema.json");
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.AbsoluteUri, Is.EqualTo("https://example.com/api/v1/schemas/schema.json"));
     }
 
     [Test]
@@ -319,8 +318,8 @@ public class PathParsingServiceTests
         var result = _service.ResolveRelativeUri(baseUri, absoluteUri);
 
         // Assert
-        result.Should().NotBeNull();
-        result.AbsoluteUri.Should().Be(absoluteUri);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.AbsoluteUri, Is.EqualTo(absoluteUri));
     }
 
     [Test]
@@ -334,8 +333,8 @@ public class PathParsingServiceTests
         var result = _service.ResolveRelativeUri(baseUri, relativeUri);
 
         // Assert
-        result.Should().NotBeNull();
-        result.AbsoluteUri.Should().Be("https://example.com/api/schemas/schema.json");
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.AbsoluteUri, Is.EqualTo("https://example.com/api/schemas/schema.json"));
     }
 
     [Test]
@@ -345,8 +344,8 @@ public class PathParsingServiceTests
         var relativeUri = "schemas/schema.json";
 
         // Act & Assert
-        var act = () => _service.ResolveRelativeUri(null!, relativeUri);
-        act.Should().Throw<ArgumentException>();
+        TestDelegate act = () => _service.ResolveRelativeUri(null!, relativeUri);
+        Assert.Throws<ArgumentException>(act);
     }
 
     [Test]
@@ -356,9 +355,9 @@ public class PathParsingServiceTests
         var baseUri = new Uri("https://example.com/api/");
 
         // Act & Assert
-        var act = () => _service.ResolveRelativeUri(baseUri, "");
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*cannot be null or empty*");
+        TestDelegate act = () => _service.ResolveRelativeUri(baseUri, "");
+        var ex = Assert.Throws<ArgumentException>(act);
+        Assert.That(ex!.Message, Does.Contain("cannot be null or empty"));
     }
 
     [Test]
@@ -372,8 +371,8 @@ public class PathParsingServiceTests
         var result = _service.ResolveRelativeUri(baseUri, relativeUri);
 
         // Assert
-        result.Should().NotBeNull();
-        result.AbsoluteUri.Should().Be("https://example.com/schemas/schema.json");
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.AbsoluteUri, Is.EqualTo("https://example.com/schemas/schema.json"));
     }
 
     #endregion
@@ -388,8 +387,8 @@ public class PathParsingServiceTests
 
         // Act & Assert
         var act = async () => await _service.ValidateAndParseUriAsync(urlWithDisallowedPort);
-        act.Should().ThrowAsync<ArgumentException>()
-            .WithMessage("*disallowed port*");
+        var ex = Assert.ThrowsAsync<ArgumentException>(async () => await act());
+        Assert.That(ex!.Message, Does.Contain("disallowed port"));
     }
 
     [Test]
@@ -402,8 +401,8 @@ public class PathParsingServiceTests
         var result = await _service.ValidateAndParseUriAsync(urlWithAllowedPort);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Port.Should().Be(8443);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Port, Is.EqualTo(8443));
     }
 
     [Test]
@@ -416,8 +415,8 @@ public class PathParsingServiceTests
         var result = await _service.ValidateAndParseUriAsync(url);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Port.Should().Be(443);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Port, Is.EqualTo(443));
     }
 
     #endregion

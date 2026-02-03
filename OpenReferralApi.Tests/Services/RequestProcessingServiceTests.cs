@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenReferralApi.Core.Models;
@@ -39,7 +38,7 @@ public class RequestProcessingServiceTests
             new ValidationOptions { MaxConcurrentRequests = 5 });
 
         // Assert
-        result.Should().Be(expectedResult);
+        Assert.That(result, Is.EqualTo(expectedResult));
     }
 
     [Test]
@@ -64,7 +63,7 @@ public class RequestProcessingServiceTests
             options: null);
 
         // Assert
-        result.Should().Be("success");
+        Assert.That(result, Is.EqualTo("success"));
     }
 
     [Test]
@@ -91,7 +90,7 @@ public class RequestProcessingServiceTests
         await Task.WhenAll(tasks);
 
         // Assert - with default concurrency of 5, max concurrent should be at most 2
-        concurrencyTracker.MaxConcurrency.Should().BeLessThanOrEqualTo(2);
+        Assert.That(concurrencyTracker.MaxConcurrency, Is.LessThanOrEqualTo(2));
     }
 
     [Test]
@@ -161,8 +160,7 @@ public class RequestProcessingServiceTests
         var results = await _service.ExecuteMultipleConcurrentlyAsync(functions);
 
         // Assert
-        results.Should().HaveCount(3);
-        results.Should().ContainInOrder(1, 2, 3);
+        Assert.That(results, Is.EqualTo(new[] { 1, 2, 3 }));
     }
 
     [Test]
@@ -175,7 +173,7 @@ public class RequestProcessingServiceTests
         var results = await _service.ExecuteMultipleConcurrentlyAsync(functions);
 
         // Assert
-        results.Should().BeEmpty();
+        Assert.That(results, Is.Empty);
     }
 
     [Test]
@@ -211,7 +209,7 @@ public class RequestProcessingServiceTests
             options);
 
         // Assert
-        result.Should().Be(expectedResult);
+        Assert.That(result, Is.EqualTo(expectedResult));
     }
 
     [Test]
@@ -233,8 +231,8 @@ public class RequestProcessingServiceTests
         }, options);
 
         // Assert
-        result.Should().Be("success");
-        attemptCount.Should().Be(2);
+        Assert.That(result, Is.EqualTo("success"));
+        Assert.That(attemptCount, Is.EqualTo(2));
     }
 
     [Test]
@@ -269,7 +267,7 @@ public class RequestProcessingServiceTests
         });
 
         // Should only attempt once for non-retriable exceptions
-        attemptCount.Should().Be(1);
+        Assert.That(attemptCount, Is.EqualTo(1));
     }
 
     [Test]
@@ -288,7 +286,7 @@ public class RequestProcessingServiceTests
 
         // Assert - with exponential backoff, should take more than immediate retries
         stopwatch.Stop();
-        stopwatch.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(10));
+        Assert.That(stopwatch.Elapsed, Is.GreaterThan(TimeSpan.FromMilliseconds(10)));
     }
 
     [Test]
@@ -323,8 +321,8 @@ public class RequestProcessingServiceTests
         using var cts = _service.CreateTimeoutToken(options);
 
         // Assert
-        cts.Token.CanBeCanceled.Should().BeTrue();
-        cts.Token.IsCancellationRequested.Should().BeFalse();
+        Assert.That(cts.Token.CanBeCanceled, Is.True);
+        Assert.That(cts.Token.IsCancellationRequested, Is.False);
     }
 
     [Test]
@@ -334,7 +332,7 @@ public class RequestProcessingServiceTests
         using var cts = _service.CreateTimeoutToken(null);
 
         // Assert
-        cts.Token.CanBeCanceled.Should().BeTrue();
+        Assert.That(cts.Token.CanBeCanceled, Is.True);
     }
 
     [Test]
@@ -348,7 +346,7 @@ public class RequestProcessingServiceTests
         await Task.Delay(1100);
 
         // Assert
-        cts.Token.IsCancellationRequested.Should().BeTrue();
+        Assert.That(cts.Token.IsCancellationRequested, Is.True);
     }
 
     [Test]
@@ -363,7 +361,7 @@ public class RequestProcessingServiceTests
         parentCts.Cancel();
 
         // Assert
-        cts.Token.IsCancellationRequested.Should().BeTrue();
+        Assert.That(cts.Token.IsCancellationRequested, Is.True);
     }
 
     #endregion
@@ -389,11 +387,11 @@ public class RequestProcessingServiceTests
         var metrics = await _service.GetResourceMetricsAsync();
 
         // Assert
-        metrics.Should().NotBeNull();
-        metrics.MaxConcurrentRequests.Should().Be(5);
-        metrics.TotalRequestsProcessed.Should().BeGreaterThanOrEqualTo(2);
-        metrics.ActiveRequests.Should().Be(0);
-        metrics.LastRequestTime.Should().NotBe(DateTime.MinValue);
+        Assert.That(metrics, Is.Not.Null);
+        Assert.That(metrics.MaxConcurrentRequests, Is.EqualTo(5));
+        Assert.That(metrics.TotalRequestsProcessed, Is.GreaterThanOrEqualTo(2));
+        Assert.That(metrics.ActiveRequests, Is.EqualTo(0));
+        Assert.That(metrics.LastRequestTime, Is.Not.EqualTo(DateTime.MinValue));
     }
 
     [Test]
@@ -420,8 +418,8 @@ public class RequestProcessingServiceTests
         var metrics = await _service.GetResourceMetricsAsync();
 
         // Assert
-        metrics.FailedRequests.Should().Be(1);
-        metrics.TotalRequestsProcessed.Should().BeGreaterThanOrEqualTo(1);
+        Assert.That(metrics.FailedRequests, Is.EqualTo(1));
+        Assert.That(metrics.TotalRequestsProcessed, Is.GreaterThanOrEqualTo(1));
     }
 
     #endregion
