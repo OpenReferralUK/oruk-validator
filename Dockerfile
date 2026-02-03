@@ -76,7 +76,9 @@ USER appuser
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD curl -f http://localhost:${PORT:-80}/health-check/live || exit 1
 
 # Run the application
-CMD ["dotnet", "OpenReferralApi.dll"]
+# Note: Using shell form (not JSON array) to allow runtime $PORT variable expansion for Heroku.
+# This triggers a linter warning about signal handling, but is necessary for dynamic port binding.
+CMD ASPNETCORE_URLS=http://*:$PORT dotnet OpenReferralApi.dll
 
 # For local development use ENTRYPOINT & comment out CMD line
 # ENTRYPOINT ["dotnet", "OpenReferralApi.dll"]
