@@ -13,18 +13,15 @@ public class OpenApiController : ControllerBase
 {
     private readonly IOpenApiValidationService _openApiValidationService;
     private readonly ILogger<OpenApiController> _logger;
-    private readonly IOpenApiDiscoveryService _discoveryService;
     private readonly IOpenApiToValidationResponseMapper _mapper;
 
     public OpenApiController(
-        IOpenApiValidationService openApiValidationService, 
-        ILogger<OpenApiController> logger, 
-        IOpenApiDiscoveryService discoveryService,
+        IOpenApiValidationService openApiValidationService,
+        ILogger<OpenApiController> logger,
         IOpenApiToValidationResponseMapper mapper)
     {
         _openApiValidationService = openApiValidationService;
         _logger = logger;
-        _discoveryService = discoveryService;
         _mapper = mapper;
     }
 
@@ -49,30 +46,12 @@ public class OpenApiController : ControllerBase
     {
         _logger.LogInformation("Received OpenAPI validation request for BaseUrl: {BaseUrl}", request.BaseUrl);
 
-        // If OpenApiSchemaUrl not provided, try to discover it from BaseUrl response's `openapi_url`.
-        if (string.IsNullOrEmpty(request.OpenApiSchemaUrl))
+        if (string.IsNullOrEmpty(request.OpenApiSchemaUrl) && string.IsNullOrEmpty(request.BaseUrl))
         {
-            if (!string.IsNullOrEmpty(request.BaseUrl))
+            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
             {
-                var (discoveredUrl, reason) = await _discoveryService.DiscoverOpenApiUrlAsync(request.BaseUrl, cancellationToken);
-                if (!string.IsNullOrEmpty(discoveredUrl))
-                {
-                    request.OpenApiSchemaUrl = discoveredUrl;
-                    request.ProfileReason = reason;
-                    _logger.LogInformation("Discovered OpenAPI URL: {OpenApiUrl}", discoveredUrl);
-                }
-                else
-                {
-                    _logger.LogWarning("Could not discover OpenAPI URL from BaseUrl: {BaseUrl}", request.BaseUrl);
-                }
-            }
-            else
-            {
-                return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
-                {
-                    ["request"] = new[] { "OpenApiSchemaUrl must be provided" }
-                }));
-            }
+                ["request"] = new[] { "OpenApiSchemaUrl must be provided" }
+            }));
         }
 
         if (string.IsNullOrEmpty(request.BaseUrl))
