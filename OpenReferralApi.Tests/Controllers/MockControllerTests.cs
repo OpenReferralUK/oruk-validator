@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -32,7 +31,7 @@ public class MockControllerTests
         var result = await _controller.GetServiceMetadata();
 
         // Assert
-        result.Should().BeOfType<OkObjectResult>();
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
     }
 
     [Test]
@@ -48,7 +47,7 @@ public class MockControllerTests
         var result = await _controller.GetServices();
 
         // Assert
-        result.Should().BeOfType<OkObjectResult>();
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
     }
 
     [Test]
@@ -64,7 +63,7 @@ public class MockControllerTests
         var result = await _controller.GetServicesById();
 
         // Assert
-        result.Should().BeOfType<OkObjectResult>();
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
     }
 
     [Test]
@@ -80,7 +79,7 @@ public class MockControllerTests
         var result = await _controller.GetTaxonomies();
 
         // Assert
-        result.Should().BeOfType<OkObjectResult>();
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
     }
 
     [Test]
@@ -96,6 +95,6 @@ public class MockControllerTests
         var result = await _controller.GetServiceAtLocations();
 
         // Assert
-        result.Should().BeOfType<OkObjectResult>();
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
     }
 }

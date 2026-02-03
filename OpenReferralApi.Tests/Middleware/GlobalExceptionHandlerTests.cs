@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -37,8 +36,8 @@ public class GlobalExceptionHandlerTests
         var result = await _handler.TryHandleAsync(context, exception, CancellationToken.None);
 
         // Assert
-        result.Should().BeTrue();
-        context.Response.StatusCode.Should().Be(400);
+        Assert.That(result, Is.True);
+        Assert.That(context.Response.StatusCode, Is.EqualTo(400));
     }
 
     [Test]
@@ -55,7 +54,7 @@ public class GlobalExceptionHandlerTests
         await _handler.TryHandleAsync(context, exception, CancellationToken.None);
 
         // Assert
-        context.Response.StatusCode.Should().Be(400);
+        Assert.That(context.Response.StatusCode, Is.EqualTo(400));
     }
 
     [Test]
@@ -72,7 +71,7 @@ public class GlobalExceptionHandlerTests
         await _handler.TryHandleAsync(context, exception, CancellationToken.None);
 
         // Assert
-        context.Response.StatusCode.Should().Be(401);
+        Assert.That(context.Response.StatusCode, Is.EqualTo(401));
     }
 
     [Test]
@@ -93,6 +92,6 @@ public class GlobalExceptionHandlerTests
         var reader = new StreamReader(context.Response.Body);
         var responseBody = await reader.ReadToEndAsync();
         
-        responseBody.Should().Contain("stackTrace");
+        Assert.That(responseBody, Does.Contain("stackTrace"));
     }
 }

@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using OpenReferralApi.Middleware;
 
@@ -25,10 +24,10 @@ public class CorrelationIdMiddlewareTests
         await middleware.InvokeAsync(context);
 
         // Assert
-        nextCalled.Should().BeTrue();
-        context.Items.Should().ContainKey("CorrelationId");
-        context.Items["CorrelationId"].Should().NotBeNull();
-        context.Response.Headers.Should().ContainKey("X-Correlation-ID");
+        Assert.That(nextCalled, Is.True);
+        Assert.That(context.Items, Does.ContainKey("CorrelationId"));
+        Assert.That(context.Items["CorrelationId"], Is.Not.Null);
+        Assert.That(context.Response.Headers, Does.ContainKey("X-Correlation-ID"));
     }
 
     [Test]
@@ -52,8 +51,8 @@ public class CorrelationIdMiddlewareTests
         await middleware.InvokeAsync(context);
 
         // Assert
-        nextCalled.Should().BeTrue();
-        context.Items["CorrelationId"].Should().Be(existingCorrelationId);
-        context.Response.Headers["X-Correlation-ID"].ToString().Should().Be(existingCorrelationId);
+        Assert.That(nextCalled, Is.True);
+        Assert.That(context.Items["CorrelationId"], Is.EqualTo(existingCorrelationId));
+        Assert.That(context.Response.Headers["X-Correlation-ID"].ToString(), Is.EqualTo(existingCorrelationId));
     }
 }

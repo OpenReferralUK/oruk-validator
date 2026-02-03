@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -44,10 +43,10 @@ public class FeedValidationControllerTests
         var result = await _controller.GetAllFeeds(CancellationToken.None);
 
         // Assert
-        result.Result.Should().BeOfType<OkObjectResult>();
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
         var okResult = result.Result as OkObjectResult;
         var returnedFeeds = okResult?.Value as List<ServiceFeed>;
-        returnedFeeds.Should().HaveCount(2);
+        Assert.That(returnedFeeds, Has.Count.EqualTo(2));
     }
 
     [Test]
@@ -62,9 +61,9 @@ public class FeedValidationControllerTests
         var result = await _controller.GetAllFeeds(CancellationToken.None);
 
         // Assert
-        result.Result.Should().BeOfType<ObjectResult>();
+        Assert.That(result.Result, Is.TypeOf<ObjectResult>());
         var objectResult = result.Result as ObjectResult;
-        objectResult?.StatusCode.Should().Be(500);
+        Assert.That(objectResult?.StatusCode, Is.EqualTo(500));
     }
 
     [Test]
@@ -100,13 +99,13 @@ public class FeedValidationControllerTests
         var result = await _controller.ValidateAllFeeds(CancellationToken.None);
 
         // Assert
-        result.Result.Should().BeOfType<OkObjectResult>();
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
         var okResult = result.Result as OkObjectResult;
         var summary = okResult?.Value as FeedValidationSummary;
-        summary?.TotalFeeds.Should().Be(2);
-        summary?.UpFeeds.Should().Be(2);
-        summary?.ValidFeeds.Should().Be(1);
-        summary?.InvalidFeeds.Should().Be(1);
+        Assert.That(summary?.TotalFeeds, Is.EqualTo(2));
+        Assert.That(summary?.UpFeeds, Is.EqualTo(2));
+        Assert.That(summary?.ValidFeeds, Is.EqualTo(1));
+        Assert.That(summary?.InvalidFeeds, Is.EqualTo(1));
     }
 
     [Test]
@@ -121,11 +120,11 @@ public class FeedValidationControllerTests
         var result = await _controller.ValidateAllFeeds(CancellationToken.None);
 
         // Assert
-        result.Result.Should().BeOfType<OkObjectResult>();
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
         var okResult = result.Result as OkObjectResult;
         var summary = okResult?.Value as FeedValidationSummary;
-        summary?.TotalFeeds.Should().Be(0);
-        summary?.Message.Should().Contain("No feeds found");
+        Assert.That(summary?.TotalFeeds, Is.EqualTo(0));
+        Assert.That(summary?.Message, Does.Contain("No feeds found"));
     }
 
     [Test]
@@ -140,9 +139,9 @@ public class FeedValidationControllerTests
         var result = await _controller.ValidateAllFeeds(CancellationToken.None);
 
         // Assert
-        result.Result.Should().BeOfType<ObjectResult>();
+        Assert.That(result.Result, Is.TypeOf<ObjectResult>());
         var objectResult = result.Result as ObjectResult;
-        objectResult?.StatusCode.Should().Be(500);
+        Assert.That(objectResult?.StatusCode, Is.EqualTo(500));
     }
 
     [Test]
@@ -175,11 +174,11 @@ public class FeedValidationControllerTests
         var result = await _controller.ValidateFeed(feedId, CancellationToken.None);
 
         // Assert
-        result.Result.Should().BeOfType<OkObjectResult>();
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
         var okResult = result.Result as OkObjectResult;
         var returnedResult = okResult?.Value as FeedValidationResult;
-        returnedResult?.FeedId.Should().Be(feedId);
-        returnedResult?.IsValid.Should().BeTrue();
+        Assert.That(returnedResult?.FeedId, Is.EqualTo(feedId));
+        Assert.That(returnedResult?.IsValid, Is.True);
     }
 
     [Test]
@@ -195,7 +194,7 @@ public class FeedValidationControllerTests
         var result = await _controller.ValidateFeed(feedId, CancellationToken.None);
 
         // Assert
-        result.Result.Should().BeOfType<NotFoundObjectResult>();
+        Assert.That(result.Result, Is.TypeOf<NotFoundObjectResult>());
     }
 
     [Test]
@@ -211,9 +210,9 @@ public class FeedValidationControllerTests
         var result = await _controller.ValidateFeed(feedId, CancellationToken.None);
 
         // Assert
-        result.Result.Should().BeOfType<ObjectResult>();
+        Assert.That(result.Result, Is.TypeOf<ObjectResult>());
         var objectResult = result.Result as ObjectResult;
-        objectResult?.StatusCode.Should().Be(500);
+        Assert.That(objectResult?.StatusCode, Is.EqualTo(500));
     }
 }
 

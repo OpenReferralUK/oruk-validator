@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
@@ -73,11 +72,11 @@ public class FeedValidationServiceTests
         var result = await service.ValidateSingleFeedAsync(feed);
 
         // Assert
-        result.IsUp.Should().BeTrue();
-        result.IsValid.Should().BeTrue();
-        result.FeedId.Should().Be("1");
-        result.ErrorMessage.Should().BeNullOrEmpty();
-        result.ResponseTimeMs.Should().BeGreaterThan(1900).And.BeLessThan(2100);
+        Assert.That(result.IsUp, Is.True);
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.FeedId, Is.EqualTo("1"));
+        Assert.That(result.ErrorMessage, Is.Null.Or.Empty);
+        Assert.That(result.ResponseTimeMs, Is.GreaterThan(1900).And.LessThan(2100));
     }
 
     [Test]
@@ -109,10 +108,10 @@ public class FeedValidationServiceTests
         var result = await service.ValidateSingleFeedAsync(feed);
 
         // Assert
-        result.IsUp.Should().BeTrue();
-        result.IsValid.Should().BeFalse();
-        result.ValidationErrorCount.Should().Be(2);
-        result.ErrorMessage.Should().Contain("Invalid path");
+        Assert.That(result.IsUp, Is.True);
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.ValidationErrorCount, Is.EqualTo(2));
+        Assert.That(result.ErrorMessage, Does.Contain("Invalid path"));
     }
 
     [Test]
@@ -130,9 +129,9 @@ public class FeedValidationServiceTests
         var result = await service.ValidateSingleFeedAsync(feed);
 
         // Assert
-        result.IsUp.Should().BeFalse();
-        result.IsValid.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("HTTP error");
+        Assert.That(result.IsUp, Is.False);
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.ErrorMessage, Does.Contain("HTTP error"));
     }
 
     [Test]
@@ -150,8 +149,8 @@ public class FeedValidationServiceTests
         var result = await service.ValidateSingleFeedAsync(feed);
 
         // Assert
-        result.IsUp.Should().BeFalse();
-        result.IsValid.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("timed out");
+        Assert.That(result.IsUp, Is.False);
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.ErrorMessage, Does.Contain("timed out"));
     }
 }

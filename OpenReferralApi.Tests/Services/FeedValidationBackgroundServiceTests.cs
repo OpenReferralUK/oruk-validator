@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -40,7 +39,7 @@ public class FeedValidationBackgroundServiceTests
             _loggerMock.Object);
 
         // Assert
-        service.Should().NotBeNull();
+        Assert.That(service, Is.Not.Null);
     }
 
     [Test]
@@ -61,7 +60,7 @@ public class FeedValidationBackgroundServiceTests
             _loggerMock.Object);
 
         // Assert
-        service.Should().NotBeNull();
+        Assert.That(service, Is.Not.Null);
     }
 
     [Test]
@@ -77,7 +76,7 @@ public class FeedValidationBackgroundServiceTests
         await service.StopAsync(CancellationToken.None);
 
         // Assert - Service stopped without throwing
-        service.Should().NotBeNull();
+        Assert.That(service, Is.Not.Null);
     }
 
     [Test]
@@ -99,7 +98,7 @@ public class FeedValidationBackgroundServiceTests
             _loggerMock.Object);
 
         // Assert
-        service.Should().NotBeNull();
+        Assert.That(service, Is.Not.Null);
     }
 
     [Test]
@@ -121,7 +120,7 @@ public class FeedValidationBackgroundServiceTests
             _loggerMock.Object);
 
         // Assert
-        service.Should().NotBeNull();
+        Assert.That(service, Is.Not.Null);
     }
 }
 

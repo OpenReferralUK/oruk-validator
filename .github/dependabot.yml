@@ -26,7 +26,6 @@ updates:
         patterns:
           - "NUnit*"
           - "Moq"
-          - "FluentAssertions"
           - "coverlet.*"
 
   # Enable version updates for Docker

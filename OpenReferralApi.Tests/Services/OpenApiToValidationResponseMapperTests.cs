@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
@@ -46,10 +45,10 @@ public class OpenApiToValidationResponseMapperTests
         var response = _mapper.MapToValidationResponse(result);
 
         // Assert
-        response.Should().NotBeNull();
+        Assert.That(response, Is.Not.Null);
         var json = JObject.FromObject(response);
-        json["service"].Should().NotBeNull();
-        json["testSuites"].Should().NotBeNull();
+        Assert.That(json["service"], Is.Not.Null);
+        Assert.That(json["testSuites"], Is.Not.Null);
     }
 
     [Test]
@@ -83,8 +82,8 @@ public class OpenApiToValidationResponseMapperTests
         // Assert
         var json = JObject.FromObject(response);
         var testSuites = json["testSuites"] as JArray;
-        testSuites.Should().NotBeNull();
-        testSuites.Should().BeEmpty();
+        Assert.That(testSuites, Is.Not.Null);
+        Assert.That(testSuites, Is.Empty);
     }
 
     [Test]
@@ -110,8 +109,8 @@ public class OpenApiToValidationResponseMapperTests
         var response = _mapper.MapToValidationResponse(result);
 
         // Assert
-        response.Should().NotBeNull();
+        Assert.That(response, Is.Not.Null);
         var json = JObject.FromObject(response);
-        json["service"]!["url"]!.ToString().Should().Be("");
+        Assert.That(json["service"]!["url"]!.ToString(), Is.EqualTo(""));
     }
 }
