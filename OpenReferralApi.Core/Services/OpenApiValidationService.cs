@@ -47,20 +47,27 @@ public class OpenApiValidationService : IOpenApiValidationService
             request.Options ??= new OpenApiValidationOptions();
 
             // Discover OpenAPI schema URL if not provided
-            /*             if (string.IsNullOrEmpty(request.OpenApiSchemaUrl) && !string.IsNullOrEmpty(request.BaseUrl))
-                        {
-                            var (discoveredUrl, reason) = await _discoveryService.DiscoverOpenApiUrlAsync(request.BaseUrl, cancellationToken);
-                            if (!string.IsNullOrEmpty(discoveredUrl))
-                            {
-                                _logger.LogInformation("Discovered OpenAPI schema URL: {Url} (Reason: {Reason})", discoveredUrl, reason);
-                                request.OpenApiSchemaUrl = discoveredUrl;
-                                request.ProfileReason = reason;
-                            }
-                            else
-                            {
-                                throw new ArgumentException("Failed to discover OpenAPI schema URL from base URL");
-                            }
-                        } */
+            if (string.IsNullOrEmpty(request.OpenApiSchemaUrl))
+            {
+                if (!string.IsNullOrEmpty(request.BaseUrl))
+                {
+                    var (discoveredUrl, reason) = await _discoveryService.DiscoverOpenApiUrlAsync(request.BaseUrl, cancellationToken);
+                    if (!string.IsNullOrEmpty(discoveredUrl))
+                    {
+                        _logger.LogInformation("Discovered OpenAPI schema URL: {Url} (Reason: {Reason})", discoveredUrl, reason);
+                        request.OpenApiSchemaUrl = discoveredUrl;
+                        request.ProfileReason = reason;
+                    }
+                    else
+                    {
+                        throw new ArgumentException("Failed to discover OpenAPI schema URL from base URL");
+                    }
+                }
+                else
+                {
+                    throw new ArgumentException("OpenApiSchemaUrl must be provided or BaseUrl must allow discovery");
+                }
+            }
 
             // Get OpenAPI specification
             JObject openApiSpec;
