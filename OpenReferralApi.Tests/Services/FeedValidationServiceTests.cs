@@ -82,7 +82,19 @@ public class FeedValidationServiceTests
         {
             IsValid = true,
             Duration = TimeSpan.FromSeconds(2),
-            SpecificationValidation = new OpenApiSpecificationValidation { Errors = new List<ValidationError>() }
+            SpecificationValidation = new OpenApiSpecificationValidation { Errors = new List<ValidationError>() },
+            EndpointTests = new List<EndpointTestResult>
+            {
+                new EndpointTestResult
+                {
+                    Path = "/services",
+                    Method = "GET",
+                    TestResults = new List<HttpTestResult>
+                    {
+                        new HttpTestResult { IsSuccess = true }
+                    }
+                }
+            }
         };
 
         _validationServiceMock
@@ -117,6 +129,30 @@ public class FeedValidationServiceTests
                 {
                     new ValidationError { Path = "/paths", Message = "Invalid path" },
                     new ValidationError { Path = "/definitions", Message = "Invalid schema" }
+                }
+            },
+            EndpointTests = new List<EndpointTestResult>
+            {
+                new EndpointTestResult
+                {
+                    Path = "/services",
+                    Method = "GET",
+                    TestResults = new List<HttpTestResult>
+                    {
+                        new HttpTestResult
+                        {
+                            IsSuccess = true,
+                            ValidationResult = new ValidationResult
+                            {
+                                IsValid = false,
+                                Errors = new List<ValidationError>
+                                {
+                                    new ValidationError { Path = "/paths", Message = "Invalid path" },
+                                    new ValidationError { Path = "/definitions", Message = "Invalid schema" }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         };
