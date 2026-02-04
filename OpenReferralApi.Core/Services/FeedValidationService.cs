@@ -152,8 +152,8 @@ public class FeedValidationService : IFeedValidationService
           TestEndpoints = true,
           TestOptionalEndpoints = true,
           TreatOptionalEndpointsAsWarnings = true,
-          TimeoutSeconds = 30,
-          MaxConcurrentRequests = 3
+          TimeoutSeconds = 60,
+          MaxConcurrentRequests = 10
         }
       };
 
