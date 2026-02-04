@@ -110,7 +110,7 @@ public class FeedValidationService : IFeedValidationService
         updates.Add(updateBuilder.Set(f => f.StatusOverall, isValid));
       }
 
-      updates.Add(updateBuilder.Set(f => f.TestDate, DateTime.UtcNow));
+      updates.Add(updateBuilder.Set(f => f.LastChecked, DateTime.UtcNow));
       updates.Add(updateBuilder.Set(f => f.LastError, error));
       updates.Add(updateBuilder.Set(f => f.ResponseTimeMs, responseTimeMs));
       updates.Add(updateBuilder.Set(f => f.ValidationErrorCount, validationErrorCount));
