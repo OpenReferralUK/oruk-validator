@@ -117,9 +117,13 @@ public class FeedValidationBackgroundService : BackgroundService
         return;
       }
 
-      // Validate each feed and update status
+      // Use SemaphoreSlim to limit concurrent validations and prevent overwhelming the dyno
+      var maxConcurrency = 5; // Process 5 feeds at a time to maintain web server responsiveness
+      using var semaphore = new SemaphoreSlim(maxConcurrency);
+      
       var tasks = feeds.Select(async feed =>
       {
+        await semaphore.WaitAsync(cancellationToken);
         try
         {
           var result = await feedValidationService.ValidateSingleFeedAsync(feed, cancellationToken);
@@ -139,6 +143,10 @@ public class FeedValidationBackgroundService : BackgroundService
         {
           _logger.LogError(ex, "Failed to validate feed {FeedId}", feed.Id);
           return null;
+        }
+        finally
+        {
+          semaphore.Release();
         }
       });
 

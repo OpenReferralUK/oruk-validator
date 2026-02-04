@@ -161,17 +161,28 @@ public class FeedValidationService : IFeedValidationService
           validationRequest,
           cancellationToken);
 
-      result.IsUp = true;
+      // IsUp is true if any endpoint test result was successful
+      result.IsUp = validationResult.EndpointTests
+          .SelectMany(e => e.TestResults)
+          .Any(tr => tr.IsSuccess);
       result.IsValid = validationResult.IsValid;
       result.ResponseTimeMs = validationResult.Duration.TotalMilliseconds;
-      result.ValidationErrorCount = validationResult.SpecificationValidation?.Errors.Count ?? 0;
+      
+      // Count all validation errors from endpoint test results
+      result.ValidationErrorCount = validationResult.EndpointTests
+          .SelectMany(e => e.TestResults)
+          .Sum(tr => tr.ValidationResult?.Errors.Count ?? 0);
 
       if (!validationResult.IsValid)
       {
-        var errors = validationResult.SpecificationValidation?.Errors
+        // Extract error messages from endpoint test results
+        var errors = validationResult.EndpointTests
+            .SelectMany(e => e.TestResults)
+            .Where(tr => tr.ValidationResult != null)
+            .SelectMany(tr => tr.ValidationResult!.Errors)
             .Take(5)
             .Select(e => $"{e.Path}: {e.Message}")
-            .ToList() ?? new List<string>();
+            .ToList();
 
         result.ErrorMessage = errors.Any()
             ? string.Join("; ", errors)
