@@ -175,8 +175,8 @@ public class ServiceFeed
         }
     }
 
-    [BsonElement("testDate")]
-    public DateTime? TestDate { get; set; }
+    [BsonElement("lastChecked")]
+    public DateTime? LastChecked { get; set; }
 
     [BsonElement("lastError")]
     public string? LastError { get; set; }
