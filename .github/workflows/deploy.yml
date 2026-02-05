@@ -1,0 +1,75 @@
+name: Deploy to Heroku
+
+on:
+  push:
+    branches: [main, staging]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # deploy-staging job to deploy to Heroku staging environment
+  # this job depends on security-scan and code-quality jobs
+  # it does not depend on docker-build or zap-scan jobs
+  # because the zap scan is only run when a pull request is made to main branch
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/staging'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.1
+
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Set Heroku stack to container
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: heroku stack:set container --app staging-oruk-api
+
+      - name: Deploy to Heroku Staging
+        uses: akhileshns/heroku-deploy@v3.14.15
+        with:
+          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+          heroku_app_name: staging-oruk-api
+          heroku_email: ${{ vars.HEROKU_EMAIL }}
+          usedocker: true
+          healthcheck: ${{ vars.STAGING_HEALTH_ENDPOINT }}
+
+  # deploy-production job to deploy to Heroku production environment
+  # this job depends on security-scan and code-quality jobs
+  # it runs only on pushes to main branch
+  # it does not depend on docker-build or zap-scan jobs
+  # because all of those checks should have been done already on the pull request to main
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.1
+
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Deploy to Heroku Production
+        uses: akhileshns/heroku-deploy@v3.14.15
+        with:
+          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+          heroku_app_name: ${{ vars.HEROKU_APP_NAME }}
+          heroku_email: ${{vars.HEROKU_EMAIL }}
+          usedocker: true
+          healthcheck: ${{ vars.HEALTH_ENDPOINT }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2.5.0
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Release v${{ github.run_number }}
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
