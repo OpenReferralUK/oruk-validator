@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using Newtonsoft.Json;
 
 namespace OpenReferralApi.Core.Models;
@@ -69,6 +70,7 @@ public class OpenApiValidationOptions
     /// Prevents tests from hanging on slow or unresponsive endpoints
     /// Higher values allow for slower APIs but increase total validation time
     /// </summary>
+    [DefaultValue(30)]
     [JsonProperty("timeoutSeconds")]
     public int TimeoutSeconds { get; set; } = 30;
 
@@ -77,6 +79,7 @@ public class OpenApiValidationOptions
     /// Higher values speed up testing but may overwhelm the target API
     /// Consider the API's rate limits and server capacity when setting this value
     /// </summary>
+    [DefaultValue(5)]
     [JsonProperty("maxConcurrentRequests")]
     public int MaxConcurrentRequests { get; set; } = 5;
 
@@ -85,6 +88,7 @@ public class OpenApiValidationOptions
     /// When true, tests optional endpoints and accepts 404/501 responses as valid for unimplemented features
     /// When false, skips endpoints tagged with "Optional"
     /// </summary>
+    [DefaultValue(true)]
     [JsonProperty("testOptionalEndpoints")]
     public bool TestOptionalEndpoints { get; set; } = true;
 
@@ -93,6 +97,7 @@ public class OpenApiValidationOptions
     /// When true, optional endpoints returning 404/501 are logged as informational
     /// When false, all endpoint failures are treated as errors regardless of optional status
     /// </summary>
+    [DefaultValue(true)]
     [JsonProperty("treatOptionalEndpointsAsWarnings")]
     public bool TreatOptionalEndpointsAsWarnings { get; set; } = true;
 
@@ -102,6 +107,7 @@ public class OpenApiValidationOptions
     /// When false (default), response bodies are omitted to reduce payload size and avoid exposing sensitive data.
     /// Must be explicitly set to true to include response bodies in validation results.
     /// </summary>
+    [DefaultValue(true)]
     [JsonProperty("includeResponseBody")]
     public bool IncludeResponseBody { get; set; } = true;
 
