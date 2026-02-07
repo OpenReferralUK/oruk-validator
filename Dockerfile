@@ -9,6 +9,9 @@ WORKDIR /app
 EXPOSE 80
 EXPOSE 443
 
+# Install curl for health checks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
 # Create a non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
@@ -62,8 +65,7 @@ WORKDIR /app
 # Copy published files
 COPY --from=publish /app/publish .
 
-# Copy schemas and mocks
-COPY --from=publish /src/OpenReferralApi/Schemas ./Schemas
+# Copy mocks (schemas are included in publish output if needed)
 COPY --from=publish /src/OpenReferralApi/Mocks ./Mocks
 
 # Set ownership to non-root user

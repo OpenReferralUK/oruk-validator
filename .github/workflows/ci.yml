@@ -215,7 +215,7 @@ jobs:
           # Health check with better error reporting
           echo "Starting health check..."
           for i in {1..30}; do
-            if curl -f http://localhost:8080 > /dev/null 2>&1; then
+            if curl -f http://localhost:8080/health-check/live > /dev/null 2>&1; then
               echo "✓ Application is ready and responding on port 8080"
               break
             fi
@@ -231,7 +231,7 @@ jobs:
 
           # Test from within the network
           docker run --rm --network zap-test-network curlimages/curl:latest \
-            curl -f http://test-app:80 -I || echo "Warning: Cannot reach app from Docker network"
+            curl -f http://test-app:80/health-check/live -I || echo "Warning: Cannot reach app from Docker network"
 
       - name: Prepare ZAP workspace
         run: |
