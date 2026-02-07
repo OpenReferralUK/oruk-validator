@@ -33,7 +33,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
         if (string.IsNullOrWhiteSpace(baseUrl)) return (null, null);
 
         const float defaultSpecificationVersion = 1.0f;
-        var defaultSpec = $"{_baseSpecificationUrl}V{defaultSpecificationVersion:0.0}-UK/open_api.json";
+        var defaultSpec = $"{_baseSpecificationUrl}{defaultSpecificationVersion:0.0}/openapi.json";
         try
         {
             using var httpClient = _httpClientFactory?.CreateClient("OpenApiValidationService") ?? new HttpClient();
@@ -59,7 +59,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
                     var extractedVersion = ExtractVersionNumber(version);
                     if (extractedVersion.HasValue)
                     {
-                        var versionedSpec = $"{_baseSpecificationUrl}V{extractedVersion.Value:0.0}-UK/open_api.json";
+                        var versionedSpec = $"{_baseSpecificationUrl}{extractedVersion.Value:0.0}/openapi.json";
                         _logger.LogInformation("Detected version '{Version}'; using HSDS-UK {ExtractedVersion:0.0} spec: {OpenApiUrl}", version, extractedVersion.Value, versionedSpec);
                         return (versionedSpec, $"Standard version {version} read from '/' endpoint");
                     }

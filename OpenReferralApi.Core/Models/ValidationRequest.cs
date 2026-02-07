@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using Newtonsoft.Json;
 
 namespace OpenReferralApi.Core.Models;
@@ -35,9 +36,11 @@ public class ValidationOptions
     [JsonProperty("maxErrors")]
     public int MaxErrors { get; set; } = 100;
 
+    [DefaultValue(30)]
     [JsonProperty("timeoutSeconds")]
     public int TimeoutSeconds { get; set; } = 30;
 
+    [DefaultValue(5)]
     [JsonProperty("maxConcurrentRequests")]
     public int MaxConcurrentRequests { get; set; } = 5;
 

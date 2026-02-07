@@ -401,22 +401,6 @@ public class JsonValidatorService : IJsonValidatorService
         return schema.Description;
     }
 
-    private string? GetSchemaIdFromObject(object? schemaObject)
-    {
-        if (schemaObject == null) return null;
-        
-        try
-        {
-            var jObject = JObject.FromObject(schemaObject);
-            return jObject["$id"]?.ToString();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Failed to extract schema ID from schema object");
-            return null;
-        }
-    }
-
     private string? GetSchemaTitleFromObject(object? schemaObject)
     {
         if (schemaObject == null) return null;

@@ -154,6 +154,10 @@ healthChecksBuilder.AddCheck<FeedValidationHealthCheck>(
 // Services
 builder.Services.AddScoped<IPathParsingService, PathParsingService>();
 builder.Services.AddSingleton<IRequestProcessingService, RequestProcessingService>();
+
+// Schema Resolver Service - resolves $ref in remote schema files
+builder.Services.AddScoped<ISchemaResolverService, SchemaResolverService>();
+
 builder.Services.AddScoped<IJsonSchemaResolverService, JsonSchemaResolverService>();
 builder.Services.AddScoped<IJsonValidatorService, JsonValidatorService>();
 builder.Services.AddScoped<IOpenApiValidationService>(provider =>

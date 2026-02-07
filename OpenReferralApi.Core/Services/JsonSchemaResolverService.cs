@@ -19,17 +19,23 @@ public interface IJsonSchemaResolverService
 
 /// <summary>
 /// Implementation of JSON Schema resolver service that handles $ref resolution
-/// Uses Newtonsoft.Json.Schema's built-in reference resolution capabilities with JSchemaUrlResolver
+/// Uses SchemaResolverService to pre-resolve all remote $ref references,
+/// then creates JSchema with fully resolved schema
 /// </summary>
 public class JsonSchemaResolverService : IJsonSchemaResolverService
 {
     private readonly ILogger<JsonSchemaResolverService> _logger;
     private readonly HttpClient _httpClient;
+    private readonly ISchemaResolverService? _schemaResolverService;
 
-    public JsonSchemaResolverService(ILogger<JsonSchemaResolverService> logger, HttpClient httpClient)
+    public JsonSchemaResolverService(
+        ILogger<JsonSchemaResolverService> logger,
+        HttpClient httpClient,
+        ISchemaResolverService? schemaResolverService = null)
     {
         _logger = logger;
         _httpClient = httpClient;
+        _schemaResolverService = schemaResolverService;
     }
     
     /// <summary>
@@ -42,7 +48,7 @@ public class JsonSchemaResolverService : IJsonSchemaResolverService
 
     /// <summary>
     /// Creates a JSON schema from JSON string with proper reference resolution and base URI
-    /// Uses Newtonsoft.Json.Schema's JSchemaUrlResolver for external reference resolution
+    /// Uses SchemaResolverService to pre-resolve all $ref before creating JSchema
     /// </summary>
     public async Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri, CancellationToken cancellationToken = default)
     {
@@ -50,28 +56,45 @@ public class JsonSchemaResolverService : IJsonSchemaResolverService
         {
             _logger.LogDebug("Creating JSON schema from JSON string with resolver. DocumentUri: {DocumentUri}", documentUri ?? "none");
 
-            // Create JSchema with proper URL resolver for external references
+            // Pre-resolve all external and internal references using SchemaResolverService
+            string resolvedSchemaJson = schemaJson;
+            if (_schemaResolverService != null)
+            {
+                try
+                {
+                    _logger.LogDebug("Pre-resolving all schema references using SchemaResolverService with base URI: {DocumentUri}", documentUri ?? "none");
+                    resolvedSchemaJson = await _schemaResolverService.ResolveAsync(schemaJson, documentUri);
+                    _logger.LogDebug("Successfully pre-resolved all schema references");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to pre-resolve schema with SchemaResolverService, continuing with original schema");
+                    // Continue with original schema if resolution fails
+                    resolvedSchemaJson = schemaJson;
+                }
+            }
+
+            // Create JSchema with the fully resolved schema (no more $ref to resolve)
             var resolver = new JSchemaUrlResolver();
 
             // Parse the schema with resolver settings
-            using var reader = new JsonTextReader(new StringReader(schemaJson));
+            using var reader = new JsonTextReader(new StringReader(resolvedSchemaJson));
 
             var settings = new JSchemaReaderSettings
             {
                 Resolver = resolver
             };
 
-            // Set base URI for relative reference resolution if provided
+            // Set base URI for any remaining reference resolution if provided
             if (!string.IsNullOrEmpty(documentUri))
             {
-                _logger.LogDebug("Loading schema with base URI for reference resolution: {DocumentUri}", documentUri);
+                _logger.LogDebug("Loading schema with base URI: {DocumentUri}", documentUri);
                 settings.BaseUri = new Uri(documentUri);
             }
 
-            var schema = await Task.Run(() => JSchema.Parse(schemaJson, settings), cancellationToken);
+            var schema = await Task.Run(() => JSchema.Parse(resolvedSchemaJson, settings), cancellationToken);
 
-            _logger.LogDebug("Successfully created schema with Newtonsoft.Json.Schema resolver");
-
+            _logger.LogDebug("Successfully created schema with reference resolution");
 
             return schema;
         }
