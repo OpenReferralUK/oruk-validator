@@ -44,7 +44,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Upload test results
-        uses: actions/upload-artifact@v6.0.0
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: test-results
@@ -69,7 +69,7 @@ jobs:
           output: "trivy-results.sarif"
 
       - name: Upload Trivy results to artifacts
-        uses: actions/upload-artifact@v6.0.0
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: trivy-scan-results
@@ -264,7 +264,7 @@ jobs:
 
       - name: Upload ZAP results
         if: always()
-        uses: actions/upload-artifact@v6.0.0
+        uses: actions/upload-artifact@v6
         with:
           name: zap-scan-results
           path: zap-reports/
