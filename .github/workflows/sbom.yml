@@ -24,7 +24,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload SBOM Artifact
-        uses: actions/upload-artifact@v3.1.2
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: software-bill-of-materials
           path: sbom.spdx.json
