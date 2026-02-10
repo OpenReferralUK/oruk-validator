@@ -111,6 +111,160 @@ When running locally in development mode, interactive API documentation is avail
 
 4. **Access Swagger UI**: Open `http://localhost:5000` in your browser
 
+## Authentication
+
+The OpenReferral API validation service supports multiple authentication methods for testing protected API endpoints. Authentication can be configured when making validation requests to ensure the validator can access secured endpoints.
+
+### Authentication Types
+
+#### API Key Authentication
+
+Use API keys passed via HTTP headers (default header: `X-API-Key`):
+
+```json
+{
+  "openApiSchemaUrl": "https://api.example.com/openapi.json",
+  "baseUrl": "https://api.example.com",
+  "dataSourceAuth": {
+    "apiKey": "your-api-key-here",
+    "apiKeyHeader": "X-API-Key"
+  },
+  "options": {
+    "skipAuthentication": false
+  }
+}
+```
+
+The `apiKeyHeader` field is optional and defaults to `X-API-Key`. You can customize it for APIs that use different header names (e.g., `Api-Key`, `Authorization`, `X-Auth-Token`).
+
+#### Bearer Token Authentication
+
+Use bearer tokens for OAuth 2.0 or JWT-based authentication:
+
+```json
+{
+  "openApiSchemaUrl": "https://api.example.com/openapi.json",
+  "baseUrl": "https://api.example.com",
+  "dataSourceAuth": {
+    "bearerToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  },
+  "options": {
+    "skipAuthentication": false
+  }
+}
+```
+
+This adds an `Authorization: Bearer <token>` header to all endpoint requests.
+
+#### Basic Authentication
+
+Use HTTP Basic Authentication with username and password:
+
+```json
+{
+  "openApiSchemaUrl": "https://api.example.com/openapi.json",
+  "baseUrl": "https://api.example.com",
+  "dataSourceAuth": {
+    "basicAuth": {
+      "username": "your-username",
+      "password": "your-password"
+    }
+  },
+  "options": {
+    "skipAuthentication": false
+  }
+}
+```
+
+Credentials are Base64-encoded and sent in the `Authorization: Basic <credentials>` header.
+
+#### Custom Headers
+
+Add any custom HTTP headers required by your API:
+
+```json
+{
+  "openApiSchemaUrl": "https://api.example.com/openapi.json",
+  "baseUrl": "https://api.example.com",
+  "dataSourceAuth": {
+    "customHeaders": {
+      "X-Client-Id": "client-123",
+      "X-Request-Id": "req-456",
+      "X-Custom-Auth": "custom-value"
+    }
+  },
+  "options": {
+    "skipAuthentication": false
+  }
+}
+```
+
+Custom headers are added to all endpoint requests and can be combined with other authentication methods.
+
+#### Multiple Authentication Methods
+
+You can combine multiple authentication methods in a single request:
+
+```json
+{
+  "openApiSchemaUrl": "https://api.example.com/openapi.json",
+  "baseUrl": "https://api.example.com",
+  "dataSourceAuth": {
+    "bearerToken": "your-jwt-token",
+    "customHeaders": {
+      "X-Client-Id": "client-123",
+      "X-Tenant-Id": "tenant-456"
+    }
+  },
+  "options": {
+    "skipAuthentication": false
+  }
+}
+```
+
+All specified authentication methods will be applied to endpoint requests.
+
+### Skipping Authentication
+
+By default, authentication is skipped (`skipAuthentication: true`) to allow testing public endpoints. To enable authentication for protected endpoints, explicitly set `skipAuthentication: false`:
+
+```json
+{
+  "options": {
+    "skipAuthentication": false
+  }
+}
+```
+
+### Security Considerations
+
+- **Never commit credentials**: Credentials should be injected via environment variables, secrets management, or secure configuration systems
+- **Use HTTPS**: Always validate APIs over HTTPS in production to protect credentials in transit
+- **Token rotation**: Refresh tokens regularly and implement proper token lifecycle management
+- **Least privilege**: Use credentials with minimal required permissions for validation tasks
+- **Audit logging**: Monitor authentication usage and failed attempts for security auditing
+
+### Example: Complete Validation Request with Authentication
+
+```bash
+curl -X POST http://localhost:5000/api/validate/openapi \
+  -H "Content-Type: application/json" \
+  -d '{
+    "openApiSchemaUrl": "https://api.example.com/openapi.json",
+    "baseUrl": "https://api.example.com",
+    "dataSourceAuth": {
+      "bearerToken": "your-jwt-token-here"
+    },
+    "options": {
+      "skipAuthentication": false,
+      "testEndpoints": true,
+      "validateSpecification": true,
+      "timeoutSeconds": 30,
+      "maxConcurrentRequests": 5
+    }
+  }'
+```
+
 ## Community & Support
 
 ### HSDS Community

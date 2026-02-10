@@ -130,6 +130,15 @@ public class OpenApiValidationOptions
     public int MaxConcurrentRequests { get; set; } = 5;
 
     /// <summary>
+    /// Whether to skip authentication when testing endpoints
+    /// Useful for testing public endpoints or when authentication is not available
+    /// May result in 401/403 errors for protected endpoints
+    /// </summary>
+    [DefaultValue(true)]
+    [JsonProperty("skipAuthentication")]
+    public bool SkipAuthentication { get; set; } = true;
+
+    /// <summary>
     /// Whether to test optional endpoints that are marked as optional in the OpenAPI specification
     /// When true, tests optional endpoints and accepts 404/501 responses as valid for unimplemented features
     /// When false, skips endpoints tagged with "Optional"

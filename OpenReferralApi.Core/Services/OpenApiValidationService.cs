@@ -94,7 +94,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             List<EndpointTestResult> endpointTests = new();
             if (request.Options.TestEndpoints && !string.IsNullOrEmpty(request.BaseUrl))
             {
-                endpointTests = await TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, request.OpenApiSchemaUrl, cancellationToken);
+                endpointTests = await TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, request.DataSourceAuth, request.OpenApiSchemaUrl, cancellationToken);
                 result.EndpointTests = endpointTests;
             }
 
@@ -353,7 +353,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             validation.IsValid, validation.Errors.Count);
     }
 
-    private async Task<List<EndpointTestResult>> TestEndpointsAsync(JObject openApiSpec, string baseUrl, OpenApiValidationOptions options, string? documentUri, CancellationToken cancellationToken = default)
+    private async Task<List<EndpointTestResult>> TestEndpointsAsync(JObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, string? documentUri, CancellationToken cancellationToken = default)
     {
         var results = new List<EndpointTestResult>();
 
@@ -395,7 +395,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 foreach (var endpoint in group.CollectionEndpoints)
                 {
                     var result = await TestSingleEndpointWithIdExtractionAsync(endpoint.Path, endpoint.Method, endpoint.Operation,
-                        baseUrl, options, extractedIds, semaphore, openApiSpec, documentUri, endpoint.PathItem, cancellationToken);
+                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, documentUri, endpoint.PathItem, cancellationToken);
                     results.Add(result);
                 }
 
@@ -405,7 +405,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 foreach (var endpoint in group.ParameterizedEndpoints)
                 {
                     var task = TestSingleEndpointWithIdSubstitutionAsync(endpoint.Path, endpoint.Method, endpoint.Operation,
-                        baseUrl, options, extractedIds, semaphore, openApiSpec, documentUri, endpoint.PathItem, cancellationToken);
+                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, documentUri, endpoint.PathItem, cancellationToken);
                     parameterizedTasks.Add(task);
                 }
 
@@ -472,7 +472,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         };
     }
 
-    private async Task<EndpointTestResult> TestSingleEndpointAsync(string path, string method, JObject operation, string baseUrl, OpenApiValidationOptions options, SemaphoreSlim semaphore, JObject openApiDocument, string? documentUri, JObject pathItem, CancellationToken cancellationToken, string? testedId = null)
+    private async Task<EndpointTestResult> TestSingleEndpointAsync(string path, string method, JObject operation, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, SemaphoreSlim semaphore, JObject openApiDocument, string? documentUri, JObject pathItem, CancellationToken cancellationToken, string? testedId = null)
     {
         await semaphore.WaitAsync(cancellationToken);
 
@@ -508,13 +508,13 @@ public class OpenApiValidationService : IOpenApiValidationService
             if (hasPagination)
             {
                 // Test pagination: first page, middle page(s), last page
-                await TestPaginatedEndpointAsync(result, path, method, operation, baseUrl, options, resolvedParams, openApiDocument, documentUri, pathItem, cancellationToken);
+                await TestPaginatedEndpointAsync(result, path, method, operation, baseUrl, options, authentication, resolvedParams, openApiDocument, documentUri, pathItem, cancellationToken);
             }
             else
             {
                 // Standard single-request testing
                 var fullUrl = BuildFullUrl(baseUrl, path, resolvedParams, options);
-                var testResult = await ExecuteHttpRequestAsync(fullUrl, method, operation, options, cancellationToken, testedId);
+                var testResult = await ExecuteHttpRequestAsync(fullUrl, method, operation, options, authentication, cancellationToken, testedId);
 
                 result.TestResults.Add(testResult);
                 result.IsTested = true;
@@ -634,6 +634,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         JObject operation,
         string baseUrl,
         OpenApiValidationOptions options,
+        DataSourceAuthentication? auth,
         JArray resolvedParams,
         JObject openApiDocument,
         string? documentUri,
@@ -647,7 +648,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         // Test first page (page=1)
         _logger.LogDebug("Testing first page for {Path}", path);
         var firstPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: 1);
-        var firstPageResult = await ExecuteHttpRequestAsync(firstPageUrl, method, operation, options, cancellationToken);
+        var firstPageResult = await ExecuteHttpRequestAsync(firstPageUrl, method, operation, options, auth, cancellationToken);
         result.TestResults.Add(firstPageResult);
 
         if (!firstPageResult.IsSuccess)
@@ -715,7 +716,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 var middlePage = totalPages / 2;
                 _logger.LogDebug("Testing middle page {PageNumber} for {Path}", middlePage, path);
                 var middlePageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: middlePage);
-                var middlePageResult = await ExecuteHttpRequestAsync(middlePageUrl, method, operation, options, cancellationToken);
+                var middlePageResult = await ExecuteHttpRequestAsync(middlePageUrl, method, operation, options, auth, cancellationToken);
                 result.TestResults.Add(middlePageResult);
 
                 if (middlePageResult.IsSuccess && middlePageResult.ResponseBody != null)
@@ -727,7 +728,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             // Test last page
             _logger.LogDebug("Testing last page {PageNumber} for {Path}", totalPages, path);
             var lastPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: totalPages);
-            var lastPageResult = await ExecuteHttpRequestAsync(lastPageUrl, method, operation, options, cancellationToken);
+            var lastPageResult = await ExecuteHttpRequestAsync(lastPageUrl, method, operation, options, auth, cancellationToken);
             result.TestResults.Add(lastPageResult);
 
             if (lastPageResult.IsSuccess && lastPageResult.ResponseBody != null)
@@ -882,7 +883,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         return resolvedParams;
     }
 
-    private async Task<HttpTestResult> ExecuteHttpRequestAsync(string url, string method, JObject operation, OpenApiValidationOptions options, CancellationToken cancellationToken, string? testedId = null)
+    private async Task<HttpTestResult> ExecuteHttpRequestAsync(string url, string method, JObject operation, OpenApiValidationOptions options, DataSourceAuthentication? authentication, CancellationToken cancellationToken, string? testedId = null)
     {
         var testResult = new HttpTestResult
         {
@@ -897,6 +898,12 @@ public class OpenApiValidationService : IOpenApiValidationService
         try
         {
             using var request = new HttpRequestMessage(new HttpMethod(method), url);
+
+            // Apply authentication if not skipped and auth is provided
+            if (!options.SkipAuthentication && authentication != null)
+            {
+                ApplyAuthenticationHeaders(request, authentication);
+            }
 
             // Set timeout
             var timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
@@ -1654,11 +1661,11 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <returns>The endpoint test result with extracted IDs stored in the shared dictionary</returns>
     private async Task<EndpointTestResult> TestSingleEndpointWithIdExtractionAsync(
         string path, string method, JObject operation, string baseUrl,
-        OpenApiValidationOptions options,
+        OpenApiValidationOptions options, DataSourceAuthentication? authentication,
         ConcurrentDictionary<string, List<string>> extractedIds, SemaphoreSlim semaphore,
         JObject openApiDocument, string? documentUri, JObject pathItem, CancellationToken cancellationToken)
     {
-        var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, semaphore, openApiDocument, documentUri, pathItem, cancellationToken);
+        var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, documentUri, pathItem, cancellationToken);
 
         // Extract IDs from successful GET responses for dependency testing
         if (method == "GET" && result.TestResults.Any(r => r.IsSuccess && !string.IsNullOrEmpty(r.ResponseBody)))
@@ -1724,7 +1731,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <returns>The endpoint test result using extracted IDs for parameters</returns>
     private async Task<EndpointTestResult> TestSingleEndpointWithIdSubstitutionAsync(
         string path, string method, JObject operation, string baseUrl,
-        OpenApiValidationOptions options,
+        OpenApiValidationOptions options, DataSourceAuthentication? authentication,
         ConcurrentDictionary<string, List<string>> extractedIds, SemaphoreSlim semaphore,
         JObject openApiDocument, string? documentUri, JObject pathItem, CancellationToken cancellationToken)
     {
@@ -1767,7 +1774,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 var substitutedPath = SubstitutePathParametersWithSpecificId(path, id);
                 _logger.LogInformation("Testing with ID '{Id}': {OriginalPath} → {SubstitutedPath}", id, path, substitutedPath);
 
-                var singleResult = await TestSingleEndpointAsync(substitutedPath, method, operation, baseUrl, options, semaphore, openApiDocument, documentUri, pathItem, cancellationToken, testedId: id);
+                var singleResult = await TestSingleEndpointAsync(substitutedPath, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, documentUri, pathItem, cancellationToken, testedId: id);
 
                 // Aggregate the results
                 compositeResult.TestResults.AddRange(singleResult.TestResults);
@@ -2187,5 +2194,52 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         return substitutedPath;
+    }
+
+    /// <summary>
+    /// Applies authentication to an HTTP request based on the provided authentication configuration
+    /// Supports API key, bearer token, basic authentication, and custom headers
+    /// </summary>
+    /// <param name="request">The HTTP request message to apply authentication to</param>
+    /// <param name="authentication">The authentication configuration containing credentials and auth type</param>
+    private void ApplyAuthenticationHeaders(HttpRequestMessage request, DataSourceAuthentication authentication)
+    {
+        // Apply API Key authentication
+        if (!string.IsNullOrEmpty(authentication.ApiKey))
+        {
+            var headerName = string.IsNullOrEmpty(authentication.ApiKeyHeader) ? "X-API-Key" : authentication.ApiKeyHeader;
+            request.Headers.Add(headerName, authentication.ApiKey);
+            _logger.LogDebug("Applied API Key authentication with header: {HeaderName}", headerName);
+        }
+
+        // Apply Bearer Token authentication
+        if (!string.IsNullOrEmpty(authentication.BearerToken))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authentication.BearerToken);
+            _logger.LogDebug("Applied Bearer Token authentication");
+        }
+
+        // Apply Basic Authentication
+        if (authentication.BasicAuth != null && 
+            !string.IsNullOrEmpty(authentication.BasicAuth.Username))
+        {
+            var credentials = Convert.ToBase64String(
+                Encoding.ASCII.GetBytes($"{authentication.BasicAuth.Username}:{authentication.BasicAuth.Password ?? string.Empty}"));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+            _logger.LogDebug("Applied Basic authentication for user: {Username}", authentication.BasicAuth.Username);
+        }
+
+        // Apply Custom Headers
+        if (authentication.CustomHeaders != null && authentication.CustomHeaders.Any())
+        {
+            foreach (var header in authentication.CustomHeaders)
+            {
+                if (!string.IsNullOrEmpty(header.Key) && !string.IsNullOrEmpty(header.Value))
+                {
+                    request.Headers.Add(header.Key, header.Value);
+                    _logger.LogDebug("Applied custom header: {HeaderName}", header.Key);
+                }
+            }
+        }
     }
 }
