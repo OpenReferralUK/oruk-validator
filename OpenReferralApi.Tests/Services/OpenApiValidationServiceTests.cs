@@ -12,7 +12,7 @@ public class OpenApiValidationServiceTests
 {
     private Mock<ILogger<OpenApiValidationService>> _loggerMock;
     private Mock<IJsonValidatorService> _jsonValidatorServiceMock;
-    private Mock<IJsonSchemaResolverService> _schemaResolverServiceMock;
+    private Mock<ISchemaResolverService> _schemaResolverServiceMock;
     private Mock<IOpenApiDiscoveryService> _discoveryServiceMock;
     private HttpClient _httpClient;
     private OpenApiValidationService _service;
@@ -22,7 +22,7 @@ public class OpenApiValidationServiceTests
     {
         _loggerMock = new Mock<ILogger<OpenApiValidationService>>();
         _jsonValidatorServiceMock = new Mock<IJsonValidatorService>();
-        _schemaResolverServiceMock = new Mock<IJsonSchemaResolverService>();
+        _schemaResolverServiceMock = new Mock<ISchemaResolverService>();
         _discoveryServiceMock = new Mock<IOpenApiDiscoveryService>();
 
         _jsonValidatorServiceMock

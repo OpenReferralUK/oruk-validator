@@ -22,10 +22,10 @@ public class OpenApiValidationService : IOpenApiValidationService
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly HttpClient _httpClient;
     private readonly IJsonValidatorService _jsonValidatorService;
-    private readonly IJsonSchemaResolverService _schemaResolverService;
+    private readonly ISchemaResolverService _schemaResolverService;
     private readonly IOpenApiDiscoveryService _discoveryService;
 
-    public OpenApiValidationService(ILogger<OpenApiValidationService> logger, HttpClient httpClient, IJsonValidatorService jsonValidatorService, IJsonSchemaResolverService schemaResolverService, IOpenApiDiscoveryService discoveryService)
+    public OpenApiValidationService(ILogger<OpenApiValidationService> logger, HttpClient httpClient, IJsonValidatorService jsonValidatorService, ISchemaResolverService schemaResolverService, IOpenApiDiscoveryService discoveryService)
     {
         _logger = logger;
         _httpClient = httpClient;
@@ -849,8 +849,8 @@ public class OpenApiValidationService : IOpenApiValidationService
     }
 
     /// <summary>
-    /// Resolves all parameter references for an operation, merging path-level and operation-level parameters.
-    /// Returns a JArray of fully resolved parameter objects (no $ref references).
+    /// Merges path-level and operation-level parameters.
+    /// Returns a JArray of parameter objects (references already resolved upstream).
     /// </summary>
     private JArray ResolveOperationParameters(JObject operation, JObject pathItem, JObject openApiDocument)
     {
@@ -862,9 +862,8 @@ public class OpenApiValidationService : IOpenApiValidationService
             _logger.LogDebug("Found {Count} path-level parameters", pathParams.Count);
             foreach (var param in pathParams)
             {
-                var resolved = ResolveParameter(param, openApiDocument);
-                resolvedParams.Add(resolved);
-                _logger.LogDebug("Path-level param: {Param}", resolved.ToString());
+                resolvedParams.Add(param);
+                _logger.LogDebug("Path-level param: {Param}", param.ToString());
             }
         }
 
@@ -874,37 +873,13 @@ public class OpenApiValidationService : IOpenApiValidationService
             _logger.LogDebug("Found {Count} operation-level parameters", operationParams.Count);
             foreach (var param in operationParams)
             {
-                var resolved = ResolveParameter(param, openApiDocument);
-                resolvedParams.Add(resolved);
-                _logger.LogDebug("Operation-level param: {Param}", resolved.ToString());
+                resolvedParams.Add(param);
+                _logger.LogDebug("Operation-level param: {Param}", param.ToString());
             }
         }
 
         _logger.LogDebug("Total resolved parameters: {Count}", resolvedParams.Count);
         return resolvedParams;
-    }
-
-    /// <summary>
-    /// Resolves a single parameter, expanding $ref if present.
-    /// Returns the fully resolved parameter object.
-    /// </summary>
-    private JToken ResolveParameter(JToken param, JObject openApiDocument)
-    {
-        if (param is JObject paramObj && paramObj.ContainsKey("$ref"))
-        {
-            var refValue = paramObj["$ref"]?.ToString();
-            if (!string.IsNullOrEmpty(refValue) && refValue.StartsWith("#/"))
-            {
-                // Remove the #/ prefix before passing to GetSchemaFromPath
-                var pathWithoutPrefix = refValue.Substring(2);
-                var referencedParam = GetSchemaFromPath(openApiDocument, pathWithoutPrefix);
-                if (referencedParam != null)
-                {
-                    return referencedParam;
-                }
-            }
-        }
-        return param;
     }
 
     private async Task<HttpTestResult> ExecuteHttpRequestAsync(string url, string method, JObject operation, OpenApiValidationOptions options, CancellationToken cancellationToken, string? testedId = null)
@@ -1009,37 +984,14 @@ public class OpenApiValidationService : IOpenApiValidationService
                                 {
                                     var schemaJson = schema.ToString();
                                     _logger.LogDebug("validating against schemaJson: {schemaJson}", schemaJson);
-                                    // Check if the schema contains internal references that need OpenAPI context
-                                    if (schemaJson.Contains("#/components/"))
+                                    // Use standard validation - SchemaResolverService handles all reference resolution
+                                    var validationRequest = new ValidationRequest
                                     {
-                                        _logger.LogDebug("Schema contains internal OpenAPI references, using OpenAPI context for resolution");
-                                        // Use OpenAPI context resolver for internal references like #/components/schemas/Page
-                                        var resolvedSchema = await _schemaResolverService.CreateSchemaWithOpenApiContextAsync(
-                                            schemaJson, openApiDocument, documentUri, cancellationToken);
-                                        // Validate directly with the resolved schema
-                                        var jsonData = JsonConvert.DeserializeObject(testResult.ResponseBody ?? "{}");
-                                        // Format JSON with indentation before validation so error line numbers are accurate
-                                        var jsonDataString = JsonConvert.SerializeObject(jsonData, Formatting.Indented);
-                                        var validationErrors = ValidateJsonAgainstSchema(jsonDataString, resolvedSchema);
-                                        testResult.ValidationResult = new ValidationResult
-                                        {
-                                            IsValid = !validationErrors.Any(),
-                                            Errors = validationErrors,
-                                            SchemaVersion = "OpenAPI-Context",
-                                            Duration = TimeSpan.Zero // Not measuring individual validation time here
-                                        };
-                                    }
-                                    else
-                                    {
-                                        // Use standard validation for schemas without internal references
-                                        var validationRequest = new ValidationRequest
-                                        {
-                                            JsonData = JsonConvert.DeserializeObject(testResult.ResponseBody ?? "{}"),
-                                            Schema = schema
-                                        };
-                                        var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
-                                        testResult.ValidationResult = validationResult;
-                                    }
+                                        JsonData = JsonConvert.DeserializeObject(testResult.ResponseBody ?? "{}"),
+                                        Schema = schema
+                                    };
+                                    var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
+                                    testResult.ValidationResult = validationResult;
                                 }
                             }
                         }
@@ -1122,7 +1074,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            // Use JsonSchemaResolverService for consistent reference resolution
+            // Use SchemaResolverService for consistent reference resolution and JSchema creation
             return await _schemaResolverService.CreateSchemaFromJsonAsync(content, specUrl, cancellationToken);
         }
         catch (Exception ex)
@@ -2035,8 +1987,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             var responseSchema = operation["responses"]?["200"]?["content"]?["application/json"]?["schema"];
             if (responseSchema != null)
             {
-                var expandedSchema = ExpandReferencesInSchema(responseSchema, openApiDocument);
-                ExtractIdFieldsFromSchemaRecursive(expandedSchema, idFields);
+                ExtractIdFieldsFromSchemaRecursive(responseSchema, idFields);
             }
         }
         catch (Exception ex)
@@ -2060,8 +2011,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             var responseSchema = operation["responses"]?["200"]?["content"]?["application/json"]?["schema"];
             if (responseSchema != null)
             {
-                var expandedSchema = ExpandReferencesInSchema(responseSchema, openApiDocument);
-                ExtractCollectionPropertiesFromSchemaRecursive(expandedSchema, collectionProps);
+                ExtractCollectionPropertiesFromSchemaRecursive(responseSchema, collectionProps);
             }
         }
         catch (Exception ex)
@@ -2193,30 +2143,8 @@ public class OpenApiValidationService : IOpenApiValidationService
     }
 
     /// <summary>
-    /// Expands $ref references in a schema to get the full structure
-    /// </summary>
-    private JToken ExpandReferencesInSchema(JToken schema, JObject openApiDocument)
-    {
-        if (schema is JObject schemaObj && schemaObj.ContainsKey("$ref"))
-        {
-            var refValue = schemaObj["$ref"]?.ToString();
-            if (!string.IsNullOrEmpty(refValue) && refValue.StartsWith("#/"))
-            {
-                var schemaPath = refValue.TrimStart('#').TrimStart('/');
-                var referencedSchema = GetSchemaFromPath(openApiDocument, schemaPath);
-                if (referencedSchema != null)
-                {
-                    return ExpandReferencesInSchema(referencedSchema, openApiDocument);
-                }
-            }
-        }
-
-        return schema;
-    }
-
-    /// <summary>
     /// Helper method to extract a schema from a given path in the OpenAPI document
-    /// This is used by the ID extraction logic to resolve schema references
+    /// This is used by parameter resolution to resolve parameter references
     /// </summary>
     private static JToken? GetSchemaFromPath(JObject document, string path)
     {

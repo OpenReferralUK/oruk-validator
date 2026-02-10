@@ -28,6 +28,14 @@ public class OpenApiValidationRequest
     public string? BaseUrl { get; set; }
 
     /// <summary>
+    /// Authentication credentials and configuration for accessing the API server during endpoint testing
+    /// Supports API keys, bearer tokens, basic auth, and custom headers
+    /// Required if endpoint testing is enabled and the API requires authentication for access
+    /// </summary>
+    [JsonProperty("dataSourceAuth")]
+    public DataSourceAuthentication? DataSourceAuth { get; set; }
+
+    /// <summary>
     /// Configuration options controlling validation behavior and endpoint testing
     /// Determines what types of validation and testing to perform
     /// If null, default options will be used (specification validation only)
@@ -41,6 +49,45 @@ public class OpenApiValidationRequest
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string? ProfileReason { get; set; }
+}
+
+/// <summary>
+/// Represents authentication credentials and configuration for accessing the API server during endpoint testing
+/// </summary>
+public class DataSourceAuthentication
+{
+    [DefaultValue(null)]
+    [JsonProperty("apiKey")]
+    public string? ApiKey { get; set; }
+
+    [DefaultValue("X-API-Key")]
+    [JsonProperty("apiKeyHeader")]
+    public string ApiKeyHeader { get; set; } = "X-API-Key";
+
+    [DefaultValue(null)]
+    [JsonProperty("bearerToken")]
+    public string? BearerToken { get; set; }
+
+    [JsonProperty("basicAuth")]
+    public BasicAuthentication? BasicAuth { get; set; }
+
+    [DefaultValue(null)]
+    [JsonProperty("customHeaders")]
+    public Dictionary<string, string>? CustomHeaders { get; set; }
+}
+
+/// <summary>
+/// Represents basic authentication credentials for HTTP requests
+/// </summary>
+public class BasicAuthentication
+{
+    [DefaultValue(null)]
+    [JsonProperty("username")]
+    public string Username { get; set; } = string.Empty;
+
+    [DefaultValue(null)]
+    [JsonProperty("password")]
+    public string Password { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -107,7 +154,7 @@ public class OpenApiValidationOptions
     /// When false (default), response bodies are omitted to reduce payload size and avoid exposing sensitive data.
     /// Must be explicitly set to true to include response bodies in validation results.
     /// </summary>
-    [DefaultValue(true)]
+    [DefaultValue(false)]
     [JsonProperty("includeResponseBody")]
     public bool IncludeResponseBody { get; set; } = true;
 

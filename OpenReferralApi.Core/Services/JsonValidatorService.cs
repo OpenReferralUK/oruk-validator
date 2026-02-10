@@ -22,14 +22,14 @@ public class JsonValidatorService : IJsonValidatorService
     private readonly HttpClient _httpClient;
     private readonly IPathParsingService _pathParsingService;
     private readonly IRequestProcessingService _requestProcessingService;
-    private readonly IJsonSchemaResolverService _schemaResolverService;
+    private readonly ISchemaResolverService _schemaResolverService;
 
     public JsonValidatorService(
         ILogger<JsonValidatorService> logger,
         HttpClient httpClient,
         IPathParsingService pathParsingService,
         IRequestProcessingService requestProcessingService,
-        IJsonSchemaResolverService schemaResolverService)
+        ISchemaResolverService schemaResolverService)
     {
         _logger = logger;
         _httpClient = httpClient;

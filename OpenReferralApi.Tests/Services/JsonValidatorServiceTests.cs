@@ -12,7 +12,7 @@ public class JsonValidatorServiceTests
     private Mock<ILogger<JsonValidatorService>> _loggerMock;
     private Mock<IPathParsingService> _pathParsingServiceMock;
     private Mock<IRequestProcessingService> _requestProcessingServiceMock;
-    private Mock<IJsonSchemaResolverService> _schemaResolverServiceMock;
+    private Mock<ISchemaResolverService> _schemaResolverServiceMock;
     private HttpClient _httpClient;
     private JsonValidatorService _service;
 
@@ -22,7 +22,7 @@ public class JsonValidatorServiceTests
         _loggerMock = new Mock<ILogger<JsonValidatorService>>();
         _pathParsingServiceMock = new Mock<IPathParsingService>();
         _requestProcessingServiceMock = new Mock<IRequestProcessingService>();
-        _schemaResolverServiceMock = new Mock<IJsonSchemaResolverService>();
+        _schemaResolverServiceMock = new Mock<ISchemaResolverService>();
 
         _requestProcessingServiceMock
             .Setup(service => service.ExecuteWithConcurrencyControlAsync(
