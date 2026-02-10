@@ -24,6 +24,9 @@ builder.Configuration.AddEnvironmentVariables("ORUK_API_");
 builder.Services.Configure<SpecificationOptions>(
     builder.Configuration.GetSection(SpecificationOptions.SectionName));
 
+builder.Services.Configure<CacheOptions>(
+    builder.Configuration.GetSection(CacheOptions.SectionName));
+
 // Add services to the container.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -173,7 +176,12 @@ builder.Services.AddScoped<IOpenApiValidationService>(provider =>
 builder.Services.AddScoped<IOpenApiDiscoveryService, OpenApiDiscoveryService>();
 builder.Services.AddScoped<IOpenApiToValidationResponseMapper, OpenApiToValidationResponseMapper>();
 
-builder.Services.AddMemoryCache();
+// Configure Memory Cache with size limit from cache options
+var cacheMaxSizeMB = builder.Configuration.GetValue<int>("Cache:MaxSizeMB", 100);
+builder.Services.AddMemoryCache(options =>
+{
+    options.SizeLimit = cacheMaxSizeMB * 1024 * 1024; // Convert MB to bytes
+});
 
 // Exception Handlers
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();

@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Models;
@@ -60,6 +62,8 @@ public class SchemaResolverService : ISchemaResolverService
   private readonly Dictionary<string, JsonNode?> _refCache = new();
   private readonly HttpClient _httpClient;
   private readonly ILogger<SchemaResolverService> _logger;
+  private readonly IMemoryCache _memoryCache;
+  private readonly CacheOptions _cacheOptions;
   private JsonNode? _rootDocument;
   private string? _baseUri;
   private DataSourceAuthentication? _auth;
@@ -69,10 +73,18 @@ public class SchemaResolverService : ISchemaResolverService
   /// </summary>
   /// <param name="httpClient">HTTP client for fetching remote schemas.</param>
   /// <param name="logger">Logger instance.</param>
-  public SchemaResolverService(HttpClient httpClient, ILogger<SchemaResolverService> logger)
+  /// <param name="memoryCache">Memory cache for persistent schema caching.</param>
+  /// <param name="cacheOptions">Cache configuration options.</param>
+  public SchemaResolverService(
+    HttpClient httpClient,
+    ILogger<SchemaResolverService> logger,
+    IMemoryCache memoryCache,
+    IOptions<CacheOptions> cacheOptions)
   {
     _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
+    _cacheOptions = cacheOptions?.Value ?? throw new ArgumentNullException(nameof(cacheOptions));
   }
 
   /// <summary>
@@ -115,6 +127,17 @@ public class SchemaResolverService : ISchemaResolverService
 
   private async Task<JsonNode?> LoadRemoteSchemaAsync(string schemaUrl)
   {
+    // Check persistent cache first if caching is enabled
+    if (_cacheOptions.Enabled)
+    {
+      var cacheKey = GenerateCacheKey(schemaUrl);
+      if (_memoryCache.TryGetValue<string>(cacheKey, out var cachedContent) && cachedContent != null)
+      {
+        _logger.LogDebug("Retrieved schema from cache: {SchemaUrl}", schemaUrl);
+        return JsonNode.Parse(cachedContent);
+      }
+    }
+
     try
     {
       _logger.LogDebug("Fetching remote schema: {SchemaUrl}", schemaUrl);
@@ -130,6 +153,35 @@ public class SchemaResolverService : ISchemaResolverService
       var response = await _httpClient.SendAsync(request);
       response.EnsureSuccessStatusCode();
       var content = await response.Content.ReadAsStringAsync();
+
+      // Store in persistent cache if caching is enabled
+      if (_cacheOptions.Enabled)
+      {
+        var cacheKey = GenerateCacheKey(schemaUrl);
+        var cacheEntryOptions = new MemoryCacheEntryOptions
+        {
+          Size = content.Length,
+          Priority = CacheItemPriority.Normal
+        };
+
+        // Configure expiration
+        if (_cacheOptions.ExpirationMinutes > 0)
+        {
+          if (_cacheOptions.UseSlidingExpiration)
+          {
+            cacheEntryOptions.SlidingExpiration = TimeSpan.FromMinutes(_cacheOptions.SlidingExpirationMinutes);
+            cacheEntryOptions.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_cacheOptions.ExpirationMinutes);
+          }
+          else
+          {
+            cacheEntryOptions.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_cacheOptions.ExpirationMinutes);
+          }
+        }
+
+        _memoryCache.Set(cacheKey, content, cacheEntryOptions);
+        _logger.LogDebug("Cached schema: {SchemaUrl} (expires in {Minutes} minutes)", schemaUrl, _cacheOptions.ExpirationMinutes);
+      }
+
       return JsonNode.Parse(content);
     }
     catch (Exception ex)
@@ -209,6 +261,14 @@ public class SchemaResolverService : ISchemaResolverService
   {
     // Check if this is an internal JSON pointer reference
     return refUrl.StartsWith("#/");
+  }
+
+  /// <summary>
+  /// Generates a cache key for a schema URL
+  /// </summary>
+  private string GenerateCacheKey(string schemaUrl)
+  {
+    return $"schema:{schemaUrl}";
   }
 
   private JsonNode? ResolveJsonPointer(string pointer)

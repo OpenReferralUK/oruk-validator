@@ -1,6 +1,9 @@
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Newtonsoft.Json.Schema;
+using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 using System.Text.Json.Nodes;
 
@@ -11,6 +14,8 @@ public class SchemaResolverServiceTests
 {
   private Mock<ILogger<SchemaResolverService>> _loggerMock;
   private Mock<HttpClient> _httpClientMock;
+  private IMemoryCache _memoryCache;
+  private IOptions<CacheOptions> _cacheOptions;
   private SchemaResolverService _service;
 
   [SetUp]
@@ -18,7 +23,28 @@ public class SchemaResolverServiceTests
   {
     _loggerMock = new Mock<ILogger<SchemaResolverService>>();
     _httpClientMock = new Mock<HttpClient>();
-    _service = new SchemaResolverService(_httpClientMock.Object, _loggerMock.Object);
+    
+    // Create real MemoryCache for testing
+    _memoryCache = new MemoryCache(new MemoryCacheOptions
+    {
+      SizeLimit = 100 * 1024 * 1024 // 100 MB
+    });
+    
+    // Create cache options with caching disabled for most tests
+    _cacheOptions = Options.Create(new CacheOptions
+    {
+      Enabled = false, // Disabled by default to not affect existing tests
+      ExpirationMinutes = 60,
+      MaxSizeMB = 100
+    });
+    
+    _service = new SchemaResolverService(_httpClientMock.Object, _loggerMock.Object, _memoryCache, _cacheOptions);
+  }
+
+  [TearDown]
+  public void TearDown()
+  {
+    _memoryCache.Dispose();
   }
 
   #region System.Text.Json ResolveAsync Tests
@@ -169,6 +195,121 @@ public class SchemaResolverServiceTests
 
     // Assert
     Assert.That(result, Is.Not.Null);
+  }
+
+  #endregion
+
+  #region Cache Tests
+
+  [Test]
+  public async Task LoadRemoteSchemaAsync_WithCacheEnabled_UsesCache()
+  {
+    // Arrange
+    var schemaUrl = "https://example.com/schema.json";
+    var schemaJson = @"{""type"": ""object""}";
+    
+    // Create service with caching enabled
+    var cacheOptions = Options.Create(new CacheOptions
+    {
+      Enabled = true,
+      ExpirationMinutes = 60
+    });
+    
+    var memoryCache = new MemoryCache(new MemoryCacheOptions
+    {
+      SizeLimit = 100 * 1024 * 1024
+    });
+
+    var handler = new MockHttpMessageHandler(async request =>
+    {
+      if (request.RequestUri?.ToString() == schemaUrl)
+      {
+        return new HttpResponseMessage
+        {
+          StatusCode = System.Net.HttpStatusCode.OK,
+          Content = new StringContent(schemaJson)
+        };
+      }
+      return new HttpResponseMessage { StatusCode = System.Net.HttpStatusCode.NotFound };
+    });
+
+    var httpClient = new HttpClient(handler);
+    var service = new SchemaResolverService(httpClient, _loggerMock.Object, memoryCache, cacheOptions);
+
+    // Create a simple schema with external ref
+    var mainSchemaJson = @"{
+      ""type"": ""object"",
+      ""properties"": {
+        ""ref"": { ""$ref"": """ + schemaUrl + @""" }
+      }
+    }";
+
+    // Act - First call should fetch from HTTP
+    var result1 = await service.ResolveAsync(mainSchemaJson, "https://example.com/");
+    
+    // Act - Second call should use cache (we can verify this by checking logs or cache state)
+    var result2 = await service.ResolveAsync(mainSchemaJson, "https://example.com/");
+
+    // Assert
+    Assert.That(result1, Is.Not.Null);
+    Assert.That(result2, Is.Not.Null);
+    
+    // Verify cache contains the schema
+    var cacheKey = $"schema:{schemaUrl}";
+    Assert.That(memoryCache.TryGetValue(cacheKey, out string? _), Is.True);
+  }
+
+  [Test]
+  public async Task LoadRemoteSchemaAsync_WithCacheDisabled_SkipsCache()
+  {
+    // Arrange
+    var schemaUrl = "https://example.com/schema.json";
+    var schemaJson = @"{""type"": ""object""}";
+    
+    // Create service with caching disabled
+    var cacheOptions = Options.Create(new CacheOptions
+    {
+      Enabled = false
+    });
+    
+    var memoryCache = new MemoryCache(new MemoryCacheOptions
+    {
+      SizeLimit = 100 * 1024 * 1024
+    });
+
+    var handler = new MockHttpMessageHandler(async request =>
+    {
+      if (request.RequestUri?.ToString() == schemaUrl)
+      {
+        return new HttpResponseMessage
+        {
+          StatusCode = System.Net.HttpStatusCode.OK,
+          Content = new StringContent(schemaJson)
+        };
+      }
+      return new HttpResponseMessage { StatusCode = System.Net.HttpStatusCode.NotFound };
+    });
+
+    var httpClient = new HttpClient(handler);
+    var service = new SchemaResolverService(httpClient, _loggerMock.Object, memoryCache, cacheOptions);
+
+    // Create a simple schema with external ref
+    var mainSchemaJson = @"{
+      ""type"": ""object"",
+      ""properties"": {
+        ""ref"": { ""$ref"": """ + schemaUrl + @""" }
+      }
+    }";
+
+    // Act
+    var result = await service.ResolveAsync(mainSchemaJson, "https://example.com/");
+
+    // Assert
+    Assert.That(result, Is.Not.Null);
+    
+    // Verify cache does not contain the schema
+    var cacheKey = $"schema:{schemaUrl}";
+    Assert.That(memoryCache.TryGetValue(cacheKey, out string? _), Is.False);
   }
 
   #endregion
