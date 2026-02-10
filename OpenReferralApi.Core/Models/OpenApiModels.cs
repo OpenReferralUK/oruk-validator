@@ -12,12 +12,12 @@ public class OpenApiValidationRequest
 {
 
     /// <summary>
-    /// URL to fetch the OpenAPI specification from (JSON or YAML)
-    /// The service will download and parse the specification from this URL
-    /// Supports HTTP/HTTPS URLs and handles $ref resolution for external references
+    /// OpenAPI schema configuration including URL and optional authentication
+    /// Used to fetch and authenticate access to the OpenAPI specification
+    /// If null, the schema URL will be discovered from the baseUrl
     /// </summary>
-    [JsonProperty("openApiSchemaUrl")]
-    public string? OpenApiSchemaUrl { get; set; }
+    [JsonProperty("openApiSchema")]
+    public OpenApiSchema? OpenApiSchema { get; set; }
 
     /// <summary>
     /// Base URL of the live API server for endpoint testing
@@ -87,6 +87,29 @@ public class BasicAuthentication
     [DefaultValue("")]
     [JsonProperty("password")]
     public string Password { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Configuration for OpenAPI schema location and authentication
+/// </summary>
+public class OpenApiSchema
+{
+    /// <summary>
+    /// URL to fetch the OpenAPI specification from (JSON or YAML)
+    /// The service will download and parse the specification from this URL
+    /// Supports HTTP/HTTPS URLs and handles $ref resolution for external references
+    /// </summary>
+    [JsonProperty("url")]
+    public string? Url { get; set; }
+
+    /// <summary>
+    /// Authentication credentials and configuration for accessing the OpenAPI schema URL
+    /// Used when fetching the OpenAPI specification requires authentication
+    /// Supports API keys, bearer tokens, basic auth, and custom headers
+    /// If null, schema fetching will be attempted without authentication
+    /// </summary>
+    [JsonProperty("authentication")]
+    public DataSourceAuthentication? Authentication { get; set; }
 }
 
 /// <summary>

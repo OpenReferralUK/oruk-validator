@@ -123,7 +123,9 @@ Use API keys passed via HTTP headers (default header: `X-API-Key`):
 
 ```json
 {
-  "openApiSchemaUrl": "https://api.example.com/openapi.json",
+  "openApiSchema": {
+    "url": "https://api.example.com/openapi.json"
+  },
   "baseUrl": "https://api.example.com",
   "dataSourceAuth": {
     "apiKey": "your-api-key-here",
@@ -143,7 +145,9 @@ Use bearer tokens for OAuth 2.0 or JWT-based authentication:
 
 ```json
 {
-  "openApiSchemaUrl": "https://api.example.com/openapi.json",
+  "openApiSchema": {
+    "url": "https://api.example.com/openapi.json"
+  },
   "baseUrl": "https://api.example.com",
   "dataSourceAuth": {
     "bearerToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -162,7 +166,9 @@ Use HTTP Basic Authentication with username and password:
 
 ```json
 {
-  "openApiSchemaUrl": "https://api.example.com/openapi.json",
+  "openApiSchema": {
+    "url": "https://api.example.com/openapi.json"
+  },
   "baseUrl": "https://api.example.com",
   "dataSourceAuth": {
     "basicAuth": {
@@ -184,7 +190,9 @@ Add any custom HTTP headers required by your API:
 
 ```json
 {
-  "openApiSchemaUrl": "https://api.example.com/openapi.json",
+  "openApiSchema": {
+    "url": "https://api.example.com/openapi.json"
+  },
   "baseUrl": "https://api.example.com",
   "dataSourceAuth": {
     "customHeaders": {
@@ -207,7 +215,9 @@ You can combine multiple authentication methods in a single request:
 
 ```json
 {
-  "openApiSchemaUrl": "https://api.example.com/openapi.json",
+  "openApiSchema": {
+    "url": "https://api.example.com/openapi.json"
+  },
   "baseUrl": "https://api.example.com",
   "dataSourceAuth": {
     "bearerToken": "your-jwt-token",

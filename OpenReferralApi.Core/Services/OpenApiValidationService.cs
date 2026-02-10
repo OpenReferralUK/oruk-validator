@@ -47,7 +47,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             request.Options ??= new OpenApiValidationOptions();
 
             // Discover OpenAPI schema URL if not provided
-            if (string.IsNullOrEmpty(request.OpenApiSchemaUrl))
+            if (request.OpenApiSchema == null || string.IsNullOrEmpty(request.OpenApiSchema.Url))
             {
                 if (!string.IsNullOrEmpty(request.BaseUrl))
                 {
@@ -55,7 +55,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                     if (!string.IsNullOrEmpty(discoveredUrl))
                     {
                         _logger.LogInformation("Discovered OpenAPI schema URL: {Url} (Reason: {Reason})", discoveredUrl, reason);
-                        request.OpenApiSchemaUrl = discoveredUrl;
+                        request.OpenApiSchema ??= new OpenApiSchema();
+                        request.OpenApiSchema.Url = discoveredUrl;
                         request.ProfileReason = reason;
                     }
                     else
@@ -65,21 +66,21 @@ public class OpenApiValidationService : IOpenApiValidationService
                 }
                 else
                 {
-                    throw new ArgumentException("OpenApiSchemaUrl must be provided or BaseUrl must allow discovery");
+                    throw new ArgumentException("OpenAPI schema URL must be provided or BaseUrl must allow discovery");
                 }
             }
 
             // Get OpenAPI specification
             JObject openApiSpec;
-            if (!string.IsNullOrEmpty(request.OpenApiSchemaUrl))
+            if (!string.IsNullOrEmpty(request.OpenApiSchema?.Url))
             {
-                var fetchedSchema = await FetchOpenApiSpecFromUrlAsync(request.OpenApiSchemaUrl, cancellationToken);
+                var fetchedSchema = await FetchOpenApiSpecFromUrlAsync(request.OpenApiSchema.Url, request.OpenApiSchema.Authentication, cancellationToken);
                 openApiSpec = JObject.Parse(fetchedSchema.ToString());
                 // External references are already resolved by FetchOpenApiSpecFromUrlAsync
             }
             else
             {
-                throw new ArgumentException("OpenApiSchemaUrl must be provided or BaseUrl must allow discovery");
+                throw new ArgumentException("OpenAPI schema URL must be provided or BaseUrl must allow discovery");
             }
 
             // Validate the OpenAPI specification
@@ -94,7 +95,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             List<EndpointTestResult> endpointTests = new();
             if (request.Options.TestEndpoints && !string.IsNullOrEmpty(request.BaseUrl))
             {
-                endpointTests = await TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, request.DataSourceAuth, request.OpenApiSchemaUrl, cancellationToken);
+                endpointTests = await TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, request.DataSourceAuth, request.OpenApiSchema?.Url, cancellationToken);
                 result.EndpointTests = endpointTests;
             }
 
@@ -1063,7 +1064,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         return errors;
     }
 
-    private async Task<JSchema> FetchOpenApiSpecFromUrlAsync(string specUrl, CancellationToken cancellationToken)
+    private async Task<JSchema> FetchOpenApiSpecFromUrlAsync(string specUrl, DataSourceAuthentication? auth, CancellationToken cancellationToken)
     {
         try
         {
@@ -1076,18 +1077,61 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             using var request = new HttpRequestMessage(HttpMethod.Get, specUrl);
 
+            // Apply authentication if provided
+            if (auth != null)
+            {
+                ApplyAuthentication(request, auth);
+            }
+
             var response = await _httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
             // Use SchemaResolverService for consistent reference resolution and JSchema creation
-            return await _schemaResolverService.CreateSchemaFromJsonAsync(content, specUrl, cancellationToken);
+            // Pass authentication so nested schema references can also be authenticated
+            return await _schemaResolverService.CreateSchemaFromJsonAsync(content, specUrl, auth, cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to fetch OpenAPI specification from URL: {SpecUrl}", specUrl);
             throw new InvalidOperationException($"Failed to fetch OpenAPI specification from URL: {specUrl}", ex);
+        }
+    }
+
+    private void ApplyAuthentication(HttpRequestMessage request, DataSourceAuthentication auth)
+    {
+        // Apply API Key authentication
+        if (!string.IsNullOrEmpty(auth.ApiKey))
+        {
+            request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
+            _logger.LogDebug("Applied API Key authentication with header: {Header}", auth.ApiKeyHeader);
+        }
+
+        // Apply Bearer Token authentication
+        if (!string.IsNullOrEmpty(auth.BearerToken))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.BearerToken);
+            _logger.LogDebug("Applied Bearer Token authentication");
+        }
+
+        // Apply Basic authentication
+        if (auth.BasicAuth != null && !string.IsNullOrEmpty(auth.BasicAuth.Username))
+        {
+            var credentials = Convert.ToBase64String(
+                Encoding.ASCII.GetBytes($"{auth.BasicAuth.Username}:{auth.BasicAuth.Password}"));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+            _logger.LogDebug("Applied Basic authentication for user: {Username}", auth.BasicAuth.Username);
+        }
+
+        // Apply custom headers
+        if (auth.CustomHeaders != null)
+        {
+            foreach (var header in auth.CustomHeaders)
+            {
+                request.Headers.Add(header.Key, header.Value);
+                _logger.LogDebug("Applied custom header: {HeaderName}", header.Key);
+            }
         }
     }
 

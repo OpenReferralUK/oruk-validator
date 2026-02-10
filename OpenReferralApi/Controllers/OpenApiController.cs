@@ -46,11 +46,11 @@ public class OpenApiController : ControllerBase
     {
         _logger.LogInformation("Received OpenAPI validation request for BaseUrl: {BaseUrl}", request.BaseUrl);
 
-        if (string.IsNullOrEmpty(request.OpenApiSchemaUrl) && string.IsNullOrEmpty(request.BaseUrl))
+        if (string.IsNullOrEmpty(request.OpenApiSchema?.Url) && string.IsNullOrEmpty(request.BaseUrl))
         {
             return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
             {
-                ["request"] = new[] { "OpenApiSchemaUrl must be provided" }
+                ["request"] = new[] { "OpenAPI schema URL must be provided or discoverable from baseUrl" }
             }));
         }
 
