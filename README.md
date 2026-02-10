@@ -61,7 +61,7 @@ This solution is built as a modern, cloud-native application with the following 
 - **OpenApiValidationService**: Orchestrates OpenAPI spec validation and endpoint testing
 - **OpenApiDiscoveryService**: Discovers and parses OpenAPI specifications from URLs
 - **JsonValidatorService**: Validates JSON responses against HSDS-UK schemas
-- **JsonSchemaResolverService**: Loads and resolves JSON schema definitions
+- **SchemaResolverService**: Resolves JSON Schema definitions and creates JSchema objects
 - **RequestProcessingService**: HTTP client management with caching and timeout handling
 - **PathParsingService**: URL and path parameter parsing utilities
 - **OpenApiToValidationResponseMapper**: Maps validation results to response formats

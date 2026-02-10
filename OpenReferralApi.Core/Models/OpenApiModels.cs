@@ -56,7 +56,7 @@ public class OpenApiValidationRequest
 /// </summary>
 public class DataSourceAuthentication
 {
-    [DefaultValue(null)]
+    [DefaultValue("")]
     [JsonProperty("apiKey")]
     public string? ApiKey { get; set; }
 
@@ -64,16 +64,15 @@ public class DataSourceAuthentication
     [JsonProperty("apiKeyHeader")]
     public string ApiKeyHeader { get; set; } = "X-API-Key";
 
-    [DefaultValue(null)]
+    [DefaultValue("")]
     [JsonProperty("bearerToken")]
     public string? BearerToken { get; set; }
 
     [JsonProperty("basicAuth")]
     public BasicAuthentication? BasicAuth { get; set; }
 
-    [DefaultValue(null)]
     [JsonProperty("customHeaders")]
-    public Dictionary<string, string>? CustomHeaders { get; set; }
+    public Dictionary<string, string>? CustomHeaders { get; set; } = new();
 }
 
 /// <summary>
@@ -81,11 +80,11 @@ public class DataSourceAuthentication
 /// </summary>
 public class BasicAuthentication
 {
-    [DefaultValue(null)]
+    [DefaultValue("")]
     [JsonProperty("username")]
     public string Username { get; set; } = string.Empty;
 
-    [DefaultValue(null)]
+    [DefaultValue("")]
     [JsonProperty("password")]
     public string Password { get; set; } = string.Empty;
 }
