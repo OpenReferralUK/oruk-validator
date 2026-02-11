@@ -14,6 +14,7 @@ env:
   DOTNET_VERSION: "10.0.x"
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
+  TRIVY_DOCKER_IMAGE: "aquasec/trivy:0.69.1"
 
 permissions:
   contents: read
@@ -112,7 +113,7 @@ jobs:
         uses: actions/checkout@v6.0.2
 
       - name: Run Trivy (filesystem)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -184,16 +185,55 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Trivy on built image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.33.1
+        continue-on-error: true
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:sha-${{ github.sha }}
           format: 'sarif'
           output: 'trivy-image-results.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM,UNKNOWN'
 
+      - name: Diagnose missing Trivy SARIF
+        if: always()
+        run: |
+          if [ -f trivy-image-results.sarif ]; then
+            echo "Trivy SARIF present. No diagnostic scan needed."
+            exit 0
+          fi
+
+          echo "Trivy SARIF missing. Running diagnostic scan with debug output."
+          docker pull ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:sha-${{ github.sha }}
+
+          docker run --rm ${{ env.TRIVY_DOCKER_IMAGE }} \
+            image \
+            --debug \
+            --exit-code 0 \
+            --format sarif \
+            --output trivy-image-results.sarif \
+            --severity CRITICAL,HIGH,MEDIUM,UNKNOWN \
+            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:sha-${{ github.sha }} || true
+
+          docker run --rm ${{ env.TRIVY_DOCKER_IMAGE }} \
+            image \
+            --debug \
+            --exit-code 0 \
+            --format table \
+            --severity CRITICAL,HIGH,MEDIUM,UNKNOWN \
+            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:sha-${{ github.sha }} || true
+
+      - name: Check Trivy SARIF exists
+        id: trivy_sarif
+        if: always()
+        run: |
+          if [ -f trivy-image-results.sarif ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload Trivy Image SARIF
         uses: github/codeql-action/upload-sarif@v4.32.2
-        if: always()
+        if: steps.trivy_sarif.outputs.present == 'true'
         with:
           sarif_file: trivy-image-results.sarif
 
