@@ -35,7 +35,10 @@ public class OpenApiControllerTests
         var request = new OpenApiValidationRequest
         {
             BaseUrl = "https://api.example.com",
-            OpenApiSchemaUrl = "https://api.example.com/openapi.json"
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://api.example.com/openapi.json"
+            }
         };
 
         var validationResult = new OpenApiValidationResult
@@ -66,7 +69,7 @@ public class OpenApiControllerTests
         var request = new OpenApiValidationRequest
         {
             BaseUrl = null,
-            OpenApiSchemaUrl = null
+            OpenApiSchema = null
         };
 
         // Act

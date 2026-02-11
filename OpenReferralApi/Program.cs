@@ -24,6 +24,9 @@ builder.Configuration.AddEnvironmentVariables("ORUK_API_");
 builder.Services.Configure<SpecificationOptions>(
     builder.Configuration.GetSection(SpecificationOptions.SectionName));
 
+builder.Services.Configure<CacheOptions>(
+    builder.Configuration.GetSection(CacheOptions.SectionName));
+
 // Add services to the container.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -155,10 +158,9 @@ healthChecksBuilder.AddCheck<FeedValidationHealthCheck>(
 builder.Services.AddScoped<IPathParsingService, PathParsingService>();
 builder.Services.AddSingleton<IRequestProcessingService, RequestProcessingService>();
 
-// Schema Resolver Service - resolves $ref in remote schema files
+// Schema Resolver Service - resolves $ref in remote schema files and creates JSchema objects
 builder.Services.AddScoped<ISchemaResolverService, SchemaResolverService>();
 
-builder.Services.AddScoped<IJsonSchemaResolverService, JsonSchemaResolverService>();
 builder.Services.AddScoped<IJsonValidatorService, JsonValidatorService>();
 builder.Services.AddScoped<IOpenApiValidationService>(provider =>
 {
@@ -166,7 +168,7 @@ builder.Services.AddScoped<IOpenApiValidationService>(provider =>
     var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
     var httpClient = httpClientFactory.CreateClient(nameof(OpenApiValidationService));
     var jsonValidatorService = provider.GetRequiredService<IJsonValidatorService>();
-    var schemaResolverService = provider.GetRequiredService<IJsonSchemaResolverService>();
+    var schemaResolverService = provider.GetRequiredService<ISchemaResolverService>();
     var discoveryService = provider.GetRequiredService<IOpenApiDiscoveryService>();
     return new OpenApiValidationService(logger, httpClient, jsonValidatorService, schemaResolverService, discoveryService);
 });
@@ -174,7 +176,12 @@ builder.Services.AddScoped<IOpenApiValidationService>(provider =>
 builder.Services.AddScoped<IOpenApiDiscoveryService, OpenApiDiscoveryService>();
 builder.Services.AddScoped<IOpenApiToValidationResponseMapper, OpenApiToValidationResponseMapper>();
 
-builder.Services.AddMemoryCache();
+// Configure Memory Cache with size limit from cache options
+var cacheMaxSizeMB = builder.Configuration.GetValue<int>("Cache:MaxSizeMB", 100);
+builder.Services.AddMemoryCache(options =>
+{
+    options.SizeLimit = cacheMaxSizeMB * 1024 * 1024; // Convert MB to bytes
+});
 
 // Exception Handlers
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();

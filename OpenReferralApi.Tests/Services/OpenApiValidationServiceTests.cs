@@ -12,7 +12,7 @@ public class OpenApiValidationServiceTests
 {
     private Mock<ILogger<OpenApiValidationService>> _loggerMock;
     private Mock<IJsonValidatorService> _jsonValidatorServiceMock;
-    private Mock<IJsonSchemaResolverService> _schemaResolverServiceMock;
+    private Mock<ISchemaResolverService> _schemaResolverServiceMock;
     private Mock<IOpenApiDiscoveryService> _discoveryServiceMock;
     private HttpClient _httpClient;
     private OpenApiValidationService _service;
@@ -22,7 +22,7 @@ public class OpenApiValidationServiceTests
     {
         _loggerMock = new Mock<ILogger<OpenApiValidationService>>();
         _jsonValidatorServiceMock = new Mock<IJsonValidatorService>();
-        _schemaResolverServiceMock = new Mock<IJsonSchemaResolverService>();
+        _schemaResolverServiceMock = new Mock<ISchemaResolverService>();
         _discoveryServiceMock = new Mock<IOpenApiDiscoveryService>();
 
         _jsonValidatorServiceMock
@@ -36,8 +36,8 @@ public class OpenApiValidationServiceTests
             });
 
         _schemaResolverServiceMock
-            .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string schemaJson, string documentUri, CancellationToken ct) => JSchema.Parse(schemaJson));
+            .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string schemaJson, string documentUri, DataSourceAuthentication auth, CancellationToken ct) => JSchema.Parse(schemaJson));
 
         _schemaResolverServiceMock
             .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -69,7 +69,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json"
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            }
         };
         SetupHttpMock(json);
 
@@ -87,7 +90,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://api.example.com/openapi.json",
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://api.example.com/openapi.json"
+            },
             BaseUrl = "https://api.example.com"
         };
         SetupHttpMock(json);
@@ -107,7 +113,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json"
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            }
         };
         SetupHttpMock(json);
 
@@ -125,7 +134,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json"
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            }
         };
         SetupHttpMock(json);
 
@@ -147,7 +159,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json",
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
             Options = new OpenApiValidationOptions { ValidateSpecification = true }
         };
         SetupHttpMock(json);
@@ -167,7 +182,10 @@ public class OpenApiValidationServiceTests
         var json = CreateSwagger20Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/swagger.json",
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/swagger.json"
+            },
             Options = new OpenApiValidationOptions { ValidateSpecification = true }
         };
         SetupHttpMock(json);
@@ -191,7 +209,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json",
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
             Options = new OpenApiValidationOptions { ValidateSpecification = false }
         };
         SetupHttpMock(json);
@@ -210,7 +231,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json",
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
             Options = new OpenApiValidationOptions { ValidateSpecification = true }
         };
         SetupHttpMock(json);
@@ -229,7 +253,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json"
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            }
         };
         SetupHttpMock(json);
 
@@ -250,7 +277,10 @@ public class OpenApiValidationServiceTests
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/notfound.json"
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/notfound.json"
+            }
         };
         
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
@@ -283,7 +313,10 @@ public class OpenApiValidationServiceTests
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://invalid.example.com/openapi.json"
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://invalid.example.com/openapi.json"
+            }
         };
         
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
@@ -316,7 +349,10 @@ public class OpenApiValidationServiceTests
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/invalid.json"
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/invalid.json"
+            }
         };
         
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
@@ -360,7 +396,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json"
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            }
         };
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
         {
@@ -398,7 +437,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json",
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions { IncludeResponseBody = false, TestEndpoints = true }
         };
@@ -421,7 +463,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json",
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions { IncludeTestResults = false, TestEndpoints = true }
         };
@@ -447,7 +492,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30PaginatedSpec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json",
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions { TestEndpoints = true }
         };
@@ -491,7 +539,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30PaginatedSpec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json",
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions { TestEndpoints = true }
         };
@@ -527,7 +578,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30OptionalEndpointSpec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json",
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
@@ -570,7 +624,10 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30OptionalEndpointSpec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchemaUrl = "https://example.com/openapi.json",
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
@@ -599,6 +656,511 @@ public class OpenApiValidationServiceTests
         Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
         Assert.That(result.EndpointTests[0].Status, Is.EqualTo("Skipped"));
         Assert.That(result.EndpointTests[0].TestResults, Is.Empty);
+    }
+
+    #endregion
+
+    #region Authentication Tests
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithApiKeyAuth_AddsCorrectHeader()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        HttpRequestMessage? capturedRequest = null;
+
+        SetupHttpMock((req, ct) =>
+        {
+            var requestUri = req.RequestUri?.ToString() ?? string.Empty;
+            if (!requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase))
+            {
+                capturedRequest = req;
+            }
+
+            var responseBody = requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase)
+                ? json
+                : "{}";
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody)
+            };
+        });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            DataSourceAuth = new DataSourceAuthentication
+            {
+                ApiKey = "test-api-key-12345"
+            },
+            Options = new OpenApiValidationOptions
+            {
+                TestEndpoints = true,
+                SkipAuthentication = false
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(capturedRequest, Is.Not.Null, "Expected endpoint request to be captured");
+        Assert.That(capturedRequest!.Headers.Contains("X-API-Key"), Is.True, "Expected X-API-Key header to be present");
+        Assert.That(capturedRequest.Headers.GetValues("X-API-Key").First(), Is.EqualTo("test-api-key-12345"));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithCustomApiKeyHeader_AddsCorrectHeader()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        HttpRequestMessage? capturedRequest = null;
+
+        SetupHttpMock((req, ct) =>
+        {
+            var requestUri = req.RequestUri?.ToString() ?? string.Empty;
+            if (!requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase))
+            {
+                capturedRequest = req;
+            }
+
+            var responseBody = requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase)
+                ? json
+                : "{}";
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody)
+            };
+        });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            DataSourceAuth = new DataSourceAuthentication
+            {
+                ApiKey = "custom-key-value",
+                ApiKeyHeader = "X-Custom-Auth-Key"
+            },
+            Options = new OpenApiValidationOptions
+            {
+                TestEndpoints = true,
+                SkipAuthentication = false
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.Headers.Contains("X-Custom-Auth-Key"), Is.True);
+        Assert.That(capturedRequest.Headers.GetValues("X-Custom-Auth-Key").First(), Is.EqualTo("custom-key-value"));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithBearerToken_AddsAuthorizationHeader()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        HttpRequestMessage? capturedRequest = null;
+
+        SetupHttpMock((req, ct) =>
+        {
+            var requestUri = req.RequestUri?.ToString() ?? string.Empty;
+            if (!requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase))
+            {
+                capturedRequest = req;
+            }
+
+            var responseBody = requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase)
+                ? json
+                : "{}";
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody)
+            };
+        });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            DataSourceAuth = new DataSourceAuthentication
+            {
+                BearerToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test"
+            },
+            Options = new OpenApiValidationOptions
+            {
+                TestEndpoints = true,
+                SkipAuthentication = false
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.Headers.Authorization, Is.Not.Null);
+        Assert.That(capturedRequest.Headers.Authorization!.Scheme, Is.EqualTo("Bearer"));
+        Assert.That(capturedRequest.Headers.Authorization.Parameter, Is.EqualTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test"));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithBasicAuth_AddsAuthorizationHeader()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        HttpRequestMessage? capturedRequest = null;
+
+        SetupHttpMock((req, ct) =>
+        {
+            var requestUri = req.RequestUri?.ToString() ?? string.Empty;
+            if (!requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase))
+            {
+                capturedRequest = req;
+            }
+
+            var responseBody = requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase)
+                ? json
+                : "{}";
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody)
+            };
+        });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            DataSourceAuth = new DataSourceAuthentication
+            {
+                BasicAuth = new BasicAuthentication
+                {
+                    Username = "testuser",
+                    Password = "testpass123"
+                }
+            },
+            Options = new OpenApiValidationOptions
+            {
+                TestEndpoints = true,
+                SkipAuthentication = false
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.Headers.Authorization, Is.Not.Null);
+        Assert.That(capturedRequest.Headers.Authorization!.Scheme, Is.EqualTo("Basic"));
+        
+        // Decode and verify credentials
+        var credentials = System.Text.Encoding.ASCII.GetString(
+            Convert.FromBase64String(capturedRequest.Headers.Authorization.Parameter!));
+        Assert.That(credentials, Is.EqualTo("testuser:testpass123"));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithCustomHeaders_AddsAllHeaders()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        HttpRequestMessage? capturedRequest = null;
+
+        SetupHttpMock((req, ct) =>
+        {
+            var requestUri = req.RequestUri?.ToString() ?? string.Empty;
+            if (!requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase))
+            {
+                capturedRequest = req;
+            }
+
+            var responseBody = requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase)
+                ? json
+                : "{}";
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody)
+            };
+        });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            DataSourceAuth = new DataSourceAuthentication
+            {
+                CustomHeaders = new Dictionary<string, string>
+                {
+                    { "X-Client-Id", "client-123" },
+                    { "X-Request-Id", "req-456" },
+                    { "X-Tenant-Id", "tenant-789" }
+                }
+            },
+            Options = new OpenApiValidationOptions
+            {
+                TestEndpoints = true,
+                SkipAuthentication = false
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.Headers.Contains("X-Client-Id"), Is.True);
+        Assert.That(capturedRequest.Headers.GetValues("X-Client-Id").First(), Is.EqualTo("client-123"));
+        Assert.That(capturedRequest.Headers.Contains("X-Request-Id"), Is.True);
+        Assert.That(capturedRequest.Headers.GetValues("X-Request-Id").First(), Is.EqualTo("req-456"));
+        Assert.That(capturedRequest.Headers.Contains("X-Tenant-Id"), Is.True);
+        Assert.That(capturedRequest.Headers.GetValues("X-Tenant-Id").First(), Is.EqualTo("tenant-789"));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithMultipleAuthMethods_AddsAllHeaders()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        HttpRequestMessage? capturedRequest = null;
+
+        SetupHttpMock((req, ct) =>
+        {
+            var requestUri = req.RequestUri?.ToString() ?? string.Empty;
+            if (!requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase))
+            {
+                capturedRequest = req;
+            }
+
+            var responseBody = requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase)
+                ? json
+                : "{}";
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody)
+            };
+        });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            DataSourceAuth = new DataSourceAuthentication
+            {
+                BearerToken = "jwt-token-here",
+                CustomHeaders = new Dictionary<string, string>
+                {
+                    { "X-Client-Id", "multi-auth-client" }
+                }
+            },
+            Options = new OpenApiValidationOptions
+            {
+                TestEndpoints = true,
+                SkipAuthentication = false
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.Headers.Authorization, Is.Not.Null);
+        Assert.That(capturedRequest.Headers.Authorization!.Scheme, Is.EqualTo("Bearer"));
+        Assert.That(capturedRequest.Headers.Authorization.Parameter, Is.EqualTo("jwt-token-here"));
+        Assert.That(capturedRequest.Headers.Contains("X-Client-Id"), Is.True);
+        Assert.That(capturedRequest.Headers.GetValues("X-Client-Id").First(), Is.EqualTo("multi-auth-client"));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithSkipAuthenticationTrue_DoesNotAddHeaders()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        HttpRequestMessage? capturedRequest = null;
+
+        SetupHttpMock((req, ct) =>
+        {
+            var requestUri = req.RequestUri?.ToString() ?? string.Empty;
+            if (!requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase))
+            {
+                capturedRequest = req;
+            }
+
+            var responseBody = requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase)
+                ? json
+                : "{}";
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody)
+            };
+        });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            DataSourceAuth = new DataSourceAuthentication
+            {
+                ApiKey = "should-not-be-added",
+                BearerToken = "also-should-not-be-added"
+            },
+            Options = new OpenApiValidationOptions
+            {
+                TestEndpoints = true,
+                SkipAuthentication = true  // Authentication should be skipped
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.Headers.Contains("X-API-Key"), Is.False);
+        Assert.That(capturedRequest.Headers.Authorization, Is.Null);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithEmptyAuthData_DoesNotAddHeaders()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        HttpRequestMessage? capturedRequest = null;
+
+        SetupHttpMock((req, ct) =>
+        {
+            var requestUri = req.RequestUri?.ToString() ?? string.Empty;
+            if (!requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase))
+            {
+                capturedRequest = req;
+            }
+
+            var responseBody = requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase)
+                ? json
+                : "{}";
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody)
+            };
+        });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            DataSourceAuth = new DataSourceAuthentication(),  // Empty auth data
+            Options = new OpenApiValidationOptions
+            {
+                TestEndpoints = true,
+                SkipAuthentication = false
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.Headers.Authorization, Is.Null);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithBasicAuthEmptyPassword_UsesEmptyString()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        HttpRequestMessage? capturedRequest = null;
+
+        SetupHttpMock((req, ct) =>
+        {
+            var requestUri = req.RequestUri?.ToString() ?? string.Empty;
+            if (!requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase))
+            {
+                capturedRequest = req;
+            }
+
+            var responseBody = requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase)
+                ? json
+                : "{}";
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody)
+            };
+        });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            DataSourceAuth = new DataSourceAuthentication
+            {
+                BasicAuth = new BasicAuthentication
+                {
+                    Username = "testuser",
+                    Password = string.Empty  // Empty password
+                }
+            },
+            Options = new OpenApiValidationOptions
+            {
+                TestEndpoints = true,
+                SkipAuthentication = false
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.Headers.Authorization, Is.Not.Null);
+        Assert.That(capturedRequest.Headers.Authorization!.Scheme, Is.EqualTo("Basic"));
+        
+        // Decode and verify credentials (empty password becomes empty string)
+        var credentials = System.Text.Encoding.ASCII.GetString(
+            Convert.FromBase64String(capturedRequest.Headers.Authorization.Parameter!));
+        Assert.That(credentials, Is.EqualTo("testuser:"));
     }
 
     #endregion

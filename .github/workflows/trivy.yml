@@ -1,0 +1,35 @@
+name: "Trivy Security Scan"
+
+on:
+  push:
+    branches: [ "main", "staging" ]
+  pull_request:
+    branches: [ "main", "staging" ]
+
+jobs:
+  scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # Required to upload results to the Security tab
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Run Trivy vulnerability scanner (Config & Dependency)
+        uses: aquasecurity/trivy-action@0.33.1 # Use the latest version
+        with:
+          scan-type: 'fs' # Scans the file system
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH' # Only fail on serious issues
+          # Trivy will ignore these checks if you have a .trivyignore file
+
+      - name: Upload Trivy scan results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4.32.2
+        if: always() # Upload results even if vulnerabilities are found
+        with:
+          sarif_file: 'trivy-results.sarif'

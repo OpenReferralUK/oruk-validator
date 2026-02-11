@@ -1,0 +1,44 @@
+name: "CodeQL Analysis"
+
+on:
+  push:
+    branches: [ "main", "staging" ]
+  pull_request:
+    branches: [ "main", "staging" ]
+
+jobs:
+  analyze:
+    name: Analyze C#
+    runs-on: ubuntu-latest # Use windows-latest if you have specific .NET Framework (non-Core) needs
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6.0.2
+
+    # 1. Install the .NET SDK
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5.1.0
+      with:
+        dotnet-version: '10.0.x' # Update to your specific version (e.g., 6.0, 9.0)
+
+    # 2. Initialize CodeQL
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v4.32.2
+      with:
+        languages: csharp
+        queries: security-and-quality
+
+    # 3. Manual Build (Recommended for C#)
+    # This is more reliable than Autobuild for complex solutions
+    - name: Restore and Build
+      run: |
+        dotnet restore
+        dotnet build --no-restore --configuration Release
+
+    # 4. Perform Analysis
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v4.32.2

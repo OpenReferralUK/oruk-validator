@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v6.0.2
 
       - name: Setup .NET ${{ env.DOTNET_VERSION }}
@@ -80,7 +80,7 @@ jobs:
         language: ['csharp']
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v6.0.2
 
       - name: Initialize CodeQL
@@ -97,7 +97,7 @@ jobs:
     needs: build-and-test
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v6.0.2
 
       - name: Run Trivy (filesystem)
@@ -122,7 +122,7 @@ jobs:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.base_ref == 'main')
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v6.0.2
 
       - name: Set up Docker Buildx
@@ -193,7 +193,7 @@ jobs:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v6.0.2
 
       - name: Log in to GitHub Container Registry & pull image
