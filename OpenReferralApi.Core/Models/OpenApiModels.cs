@@ -12,12 +12,12 @@ public class OpenApiValidationRequest
 {
 
     /// <summary>
-    /// URL to fetch the OpenAPI specification from (JSON or YAML)
-    /// The service will download and parse the specification from this URL
-    /// Supports HTTP/HTTPS URLs and handles $ref resolution for external references
+    /// OpenAPI schema configuration including URL and optional authentication
+    /// Used to fetch and authenticate access to the OpenAPI specification
+    /// If null, the schema URL will be discovered from the baseUrl
     /// </summary>
-    [JsonProperty("openApiSchemaUrl")]
-    public string? OpenApiSchemaUrl { get; set; }
+    [JsonProperty("openApiSchema")]
+    public OpenApiSchema? OpenApiSchema { get; set; }
 
     /// <summary>
     /// Base URL of the live API server for endpoint testing
@@ -26,6 +26,14 @@ public class OpenApiValidationRequest
     /// </summary>
     [JsonProperty("baseUrl")]
     public string? BaseUrl { get; set; }
+
+    /// <summary>
+    /// Authentication credentials and configuration for accessing the API server during endpoint testing
+    /// Supports API keys, bearer tokens, basic auth, and custom headers
+    /// Required if endpoint testing is enabled and the API requires authentication for access
+    /// </summary>
+    [JsonProperty("dataSourceAuth")]
+    public DataSourceAuthentication? DataSourceAuth { get; set; }
 
     /// <summary>
     /// Configuration options controlling validation behavior and endpoint testing
@@ -41,6 +49,67 @@ public class OpenApiValidationRequest
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string? ProfileReason { get; set; }
+}
+
+/// <summary>
+/// Represents authentication credentials and configuration for accessing the API server during endpoint testing
+/// </summary>
+public class DataSourceAuthentication
+{
+    [DefaultValue("")]
+    [JsonProperty("apiKey")]
+    public string? ApiKey { get; set; }
+
+    [DefaultValue("X-API-Key")]
+    [JsonProperty("apiKeyHeader")]
+    public string ApiKeyHeader { get; set; } = "X-API-Key";
+
+    [DefaultValue("")]
+    [JsonProperty("bearerToken")]
+    public string? BearerToken { get; set; }
+
+    [JsonProperty("basicAuth")]
+    public BasicAuthentication? BasicAuth { get; set; }
+
+    [JsonProperty("customHeaders")]
+    public Dictionary<string, string>? CustomHeaders { get; set; } = new();
+}
+
+/// <summary>
+/// Represents basic authentication credentials for HTTP requests
+/// </summary>
+public class BasicAuthentication
+{
+    [DefaultValue("")]
+    [JsonProperty("username")]
+    public string Username { get; set; } = string.Empty;
+
+    [DefaultValue("")]
+    [JsonProperty("password")]
+    public string Password { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Configuration for OpenAPI schema location and authentication
+/// </summary>
+public class OpenApiSchema
+{
+    /// <summary>
+    /// URL to fetch the OpenAPI specification from (JSON or YAML)
+    /// The service will download and parse the specification from this URL
+    /// Supports HTTP/HTTPS URLs and handles $ref resolution for external references
+    /// </summary>
+    [JsonProperty("url")]
+    public string? Url { get; set; }
+
+    /// <summary>
+    /// Authentication credentials and configuration for accessing the OpenAPI schema URL
+    /// Used when fetching the OpenAPI specification requires authentication
+    /// Supports API keys, bearer tokens, basic auth, and custom headers
+    /// If null, schema fetching will be attempted without authentication
+    /// </summary>
+    [JsonProperty("authentication")]
+    public DataSourceAuthentication? Authentication { get; set; }
 }
 
 /// <summary>
@@ -84,6 +153,15 @@ public class OpenApiValidationOptions
     public int MaxConcurrentRequests { get; set; } = 5;
 
     /// <summary>
+    /// Whether to skip authentication when testing endpoints
+    /// Useful for testing public endpoints or when authentication is not available
+    /// May result in 401/403 errors for protected endpoints
+    /// </summary>
+    [DefaultValue(true)]
+    [JsonProperty("skipAuthentication")]
+    public bool SkipAuthentication { get; set; } = true;
+
+    /// <summary>
     /// Whether to test optional endpoints that are marked as optional in the OpenAPI specification
     /// When true, tests optional endpoints and accepts 404/501 responses as valid for unimplemented features
     /// When false, skips endpoints tagged with "Optional"
@@ -107,7 +185,7 @@ public class OpenApiValidationOptions
     /// When false (default), response bodies are omitted to reduce payload size and avoid exposing sensitive data.
     /// Must be explicitly set to true to include response bodies in validation results.
     /// </summary>
-    [DefaultValue(true)]
+    [DefaultValue(false)]
     [JsonProperty("includeResponseBody")]
     public bool IncludeResponseBody { get; set; } = true;
 

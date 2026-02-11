@@ -1,0 +1,30 @@
+name: "Generate SBOM"
+
+on:
+  push:
+    branches: [ "main", "staging" ]
+  workflow_dispatch: # Allows you to run this manually anytime
+
+jobs:
+  generate-sbom:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to upload the SBOM as an artifact
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Export SBOM
+        # We use the GitHub CLI (gh) which is pre-installed on runners
+        run: |
+          gh api /repos/${{ github.repository }}/dependency-graph/sbom \
+          > sbom.spdx.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload SBOM Artifact
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: software-bill-of-materials
+          path: sbom.spdx.json

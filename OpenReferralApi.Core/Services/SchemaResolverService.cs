@@ -1,33 +1,50 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Schema;
+using OpenReferralApi.Core.Models;
 
 namespace OpenReferralApi.Core.Services;
 
 /// <summary>
-/// Service for resolving JSON Schema references ($ref) in OpenAPI/OpenReferral specifications.
+/// Service for resolving JSON Schema references ($ref) and creating schemas with proper resolution.
+/// Uses System.Text.Json for reference resolution and Newtonsoft.Json.Schema for JSchema creation.
 /// Handles both external URL references and internal JSON pointer references.
 /// </summary>
 public interface ISchemaResolverService
 {
+  // System.Text.Json based schema resolution methods
   /// <summary>
   /// Resolves all $ref references in the provided schema with a base URI context.
   /// </summary>
   /// <param name="schema">The schema to resolve (as JSON string).</param>
   /// <param name="baseUri">The base URI for resolving relative references.</param>
+  /// <param name="auth">Optional authentication for fetching remote schemas.</param>
   /// <returns>The fully resolved schema as a JSON string.</returns>
-  Task<string> ResolveAsync(string schema, string? baseUri = null);
+  Task<string> ResolveAsync(string schema, string? baseUri = null, DataSourceAuthentication? auth = null);
 
   /// <summary>
   /// Resolves all $ref references in the provided schema with a base URI context.
   /// </summary>
   /// <param name="schema">The schema to resolve (as JsonNode).</param>
   /// <param name="baseUri">The base URI for resolving relative references.</param>
+  /// <param name="auth">Optional authentication for fetching remote schemas.</param>
   /// <returns>The fully resolved schema as a JsonNode.</returns>
-  Task<JsonNode?> ResolveAsync(JsonNode schema, string? baseUri = null);
+  Task<JsonNode?> ResolveAsync(JsonNode schema, string? baseUri = null, DataSourceAuthentication? auth = null);
+
+  // Newtonsoft.Json.Schema based schema creation methods
+  /// <summary>
+  /// Creates a JSON schema from JSON string with proper reference resolution
+  /// </summary>
+  Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, CancellationToken cancellationToken = default);
+
+  /// <summary>
+  /// Creates a JSON schema from JSON string with proper reference resolution and base URI
+  /// </summary>
+  Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri, DataSourceAuthentication? auth = null, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -45,18 +62,29 @@ public class SchemaResolverService : ISchemaResolverService
   private readonly Dictionary<string, JsonNode?> _refCache = new();
   private readonly HttpClient _httpClient;
   private readonly ILogger<SchemaResolverService> _logger;
+  private readonly IMemoryCache _memoryCache;
+  private readonly CacheOptions _cacheOptions;
   private JsonNode? _rootDocument;
   private string? _baseUri;
+  private DataSourceAuthentication? _auth;
 
   /// <summary>
   /// Initializes a new instance of the SchemaResolver for remote schema resolution.
   /// </summary>
   /// <param name="httpClient">HTTP client for fetching remote schemas.</param>
   /// <param name="logger">Logger instance.</param>
-  public SchemaResolverService(HttpClient httpClient, ILogger<SchemaResolverService> logger)
+  /// <param name="memoryCache">Memory cache for persistent schema caching.</param>
+  /// <param name="cacheOptions">Cache configuration options.</param>
+  public SchemaResolverService(
+    HttpClient httpClient,
+    ILogger<SchemaResolverService> logger,
+    IMemoryCache memoryCache,
+    IOptions<CacheOptions> cacheOptions)
   {
     _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
+    _cacheOptions = cacheOptions?.Value ?? throw new ArgumentNullException(nameof(cacheOptions));
   }
 
   /// <summary>
@@ -64,8 +92,9 @@ public class SchemaResolverService : ISchemaResolverService
   /// </summary>
   /// <param name="schema">The schema to resolve (as JSON string).</param>
   /// <param name="baseUri">The base URI for resolving relative references.</param>
+  /// <param name="auth">Optional authentication for fetching remote schemas.</param>
   /// <returns>The fully resolved schema as a JSON string.</returns>
-  public async Task<string> ResolveAsync(string schema, string? baseUri = null)
+  public async Task<string> ResolveAsync(string schema, string? baseUri = null, DataSourceAuthentication? auth = null)
   {
     var jsonNode = JsonNode.Parse(schema);
     if (jsonNode == null)
@@ -73,7 +102,7 @@ public class SchemaResolverService : ISchemaResolverService
       throw new ArgumentException("Invalid JSON schema", nameof(schema));
     }
 
-    var resolved = await ResolveAsync(jsonNode, baseUri);
+    var resolved = await ResolveAsync(jsonNode, baseUri, auth);
     return resolved?.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) ?? "null";
   }
 
@@ -82,13 +111,15 @@ public class SchemaResolverService : ISchemaResolverService
   /// </summary>
   /// <param name="schema">The schema to resolve (as JsonNode).</param>
   /// <param name="baseUri">The base URI for resolving relative references.</param>
+  /// <param name="auth">Optional authentication for fetching remote schemas.</param>
   /// <returns>The fully resolved schema as a JsonNode.</returns>
-  public async Task<JsonNode?> ResolveAsync(JsonNode schema, string? baseUri = null)
+  public async Task<JsonNode?> ResolveAsync(JsonNode schema, string? baseUri = null, DataSourceAuthentication? auth = null)
   {
     // Reset state for each resolution
     _refCache.Clear();
     _rootDocument = schema;
     _baseUri = baseUri;
+    _auth = auth;
 
     // Pass a new HashSet to track the current resolution path
     return await ResolveAllRefsAsync(schema, new HashSet<string>());
@@ -96,18 +127,103 @@ public class SchemaResolverService : ISchemaResolverService
 
   private async Task<JsonNode?> LoadRemoteSchemaAsync(string schemaUrl)
   {
+    // Check persistent cache first if caching is enabled
+    if (_cacheOptions.Enabled)
+    {
+      var cacheKey = GenerateCacheKey(schemaUrl);
+      if (_memoryCache.TryGetValue<string>(cacheKey, out var cachedContent) && cachedContent != null)
+      {
+        _logger.LogDebug("Retrieved schema from cache: {SchemaUrl}", schemaUrl);
+        return JsonNode.Parse(cachedContent);
+      }
+    }
+
     try
     {
       _logger.LogDebug("Fetching remote schema: {SchemaUrl}", schemaUrl);
-      var response = await _httpClient.GetAsync(schemaUrl);
+      
+      using var request = new HttpRequestMessage(HttpMethod.Get, schemaUrl);
+      
+      // Apply authentication if provided
+      if (_auth != null)
+      {
+        ApplyAuthentication(request, _auth);
+      }
+      
+      var response = await _httpClient.SendAsync(request);
       response.EnsureSuccessStatusCode();
       var content = await response.Content.ReadAsStringAsync();
+
+      // Store in persistent cache if caching is enabled
+      if (_cacheOptions.Enabled)
+      {
+        var cacheKey = GenerateCacheKey(schemaUrl);
+        var cacheEntryOptions = new MemoryCacheEntryOptions
+        {
+          Size = content.Length,
+          Priority = CacheItemPriority.Normal
+        };
+
+        // Configure expiration
+        if (_cacheOptions.ExpirationMinutes > 0)
+        {
+          if (_cacheOptions.UseSlidingExpiration)
+          {
+            cacheEntryOptions.SlidingExpiration = TimeSpan.FromMinutes(_cacheOptions.SlidingExpirationMinutes);
+            cacheEntryOptions.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_cacheOptions.ExpirationMinutes);
+          }
+          else
+          {
+            cacheEntryOptions.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_cacheOptions.ExpirationMinutes);
+          }
+        }
+
+        _memoryCache.Set(cacheKey, content, cacheEntryOptions);
+        _logger.LogDebug("Cached schema: {SchemaUrl} (expires in {Minutes} minutes)", schemaUrl, _cacheOptions.ExpirationMinutes);
+      }
+
       return JsonNode.Parse(content);
     }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Failed to fetch remote schema: {SchemaUrl}", schemaUrl);
       throw;
+    }
+  }
+
+  private void ApplyAuthentication(HttpRequestMessage request, DataSourceAuthentication auth)
+  {
+    // Apply API Key authentication
+    if (!string.IsNullOrEmpty(auth.ApiKey))
+    {
+      request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
+      _logger.LogDebug("Applied API Key authentication with header: {Header}", auth.ApiKeyHeader);
+    }
+
+    // Apply Bearer Token authentication
+    if (!string.IsNullOrEmpty(auth.BearerToken))
+    {
+      request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", auth.BearerToken);
+      _logger.LogDebug("Applied Bearer Token authentication");
+    }
+
+    // Apply Basic authentication
+    if (auth.BasicAuth != null && !string.IsNullOrEmpty(auth.BasicAuth.Username))
+    {
+      var credentials = Convert.ToBase64String(
+        System.Text.Encoding.ASCII.GetBytes($"{auth.BasicAuth.Username}:{auth.BasicAuth.Password}"));
+      request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
+      _logger.LogDebug("Applied Basic authentication for user: {Username}", auth.BasicAuth.Username);
+    }
+
+    // Apply custom headers
+    if (auth.CustomHeaders != null)
+    {
+      foreach (var header in auth.CustomHeaders)
+      {
+        request.Headers.Add(header.Key, header.Value);
+        _logger.LogDebug("Applied custom header: {HeaderName}", header.Key);
+      }
     }
   }
 
@@ -135,8 +251,8 @@ public class SchemaResolverService : ISchemaResolverService
   {
     // Check if this is a reference to an external schema file (not internal #/ references)
     // Could be absolute URL or relative path ending in .json
-    return !refUrl.StartsWith('#') && 
-           (refUrl.Contains(".json") || 
+    return !refUrl.StartsWith('#') &&
+           (refUrl.Contains(".json") ||
             Uri.IsWellFormedUriString(refUrl, UriKind.Absolute) ||
             refUrl.Contains("/"));
   }
@@ -145,6 +261,14 @@ public class SchemaResolverService : ISchemaResolverService
   {
     // Check if this is an internal JSON pointer reference
     return refUrl.StartsWith("#/");
+  }
+
+  /// <summary>
+  /// Generates a cache key for a schema URL
+  /// </summary>
+  private string GenerateCacheKey(string schemaUrl)
+  {
+    return $"schema:{schemaUrl}";
   }
 
   private JsonNode? ResolveJsonPointer(string pointer)
@@ -284,7 +408,7 @@ public class SchemaResolverService : ISchemaResolverService
   {
     // Resolve the URL (handle relative URLs)
     var resolvedUrl = ResolveSchemaUrl(refUrl);
-    
+
     // Check if we've already loaded this schema
     if (_refCache.TryGetValue(resolvedUrl, out var cached))
     {
@@ -413,4 +537,69 @@ public class SchemaResolverService : ISchemaResolverService
 
     return obj;
   }
+
+  /// <summary>
+  /// Creates a JSON schema from JSON string with proper reference resolution
+  /// </summary>
+  public async Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, CancellationToken cancellationToken = default)
+  {
+    return await CreateSchemaFromJsonAsync(schemaJson, null, null, cancellationToken);
+  }
+
+  /// <summary>
+  /// Creates a JSON schema from JSON string with proper reference resolution and base URI
+  /// Uses System.Text.Json based resolution to pre-resolve all $ref before creating JSchema
+  /// </summary>
+  public async Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri, DataSourceAuthentication? auth = null, CancellationToken cancellationToken = default)
+  {
+    try
+    {
+      _logger.LogDebug("Creating JSON schema from JSON string with resolver. DocumentUri: {DocumentUri}", documentUri ?? "none");
+
+      // Pre-resolve all external and internal references using System.Text.Json based resolution
+      string resolvedSchemaJson = schemaJson;
+      try
+      {
+        _logger.LogDebug("Pre-resolving all schema references with base URI: {DocumentUri}", documentUri ?? "none");
+        resolvedSchemaJson = await ResolveAsync(schemaJson, documentUri, auth);
+        _logger.LogDebug("Successfully pre-resolved all schema references");
+      }
+      catch (Exception ex)
+      {
+        _logger.LogWarning(ex, "Failed to pre-resolve schema, continuing with original schema");
+        // Continue with original schema if resolution fails
+        resolvedSchemaJson = schemaJson;
+      }
+
+      // Create JSchema with the fully resolved schema (no more $ref to resolve)
+      var resolver = new JSchemaUrlResolver();
+
+      // Parse the schema with resolver settings
+      using var reader = new JsonTextReader(new StringReader(resolvedSchemaJson));
+
+      var settings = new JSchemaReaderSettings
+      {
+        Resolver = resolver
+      };
+
+      // Set base URI for any remaining reference resolution if provided
+      if (!string.IsNullOrEmpty(documentUri))
+      {
+        _logger.LogDebug("Loading schema with base URI: {DocumentUri}", documentUri);
+        settings.BaseUri = new Uri(documentUri);
+      }
+
+      var schema = await Task.Run(() => JSchema.Parse(resolvedSchemaJson, settings), cancellationToken);
+
+      _logger.LogDebug("Successfully created schema with reference resolution");
+
+      return schema;
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Failed to create JSON schema from JSON with resolver. DocumentUri: {DocumentUri}", documentUri ?? "none");
+      throw;
+    }
+  }
 }
+

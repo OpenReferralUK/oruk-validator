@@ -29,8 +29,6 @@ services:
       - Database__ConnectionString=mongodb://admin:adminpassword@mongodb:27017
       - Database__DatabaseName=openreferral
       - Database__ServicesCollection=services
-      - Database__ColumnsCollection=columns
-      - Database__ViewsCollection=views
     ports:
       - "5000:80"
     depends_on:
