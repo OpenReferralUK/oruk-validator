@@ -1068,7 +1068,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     {
         try
         {
-            _logger.LogInformation("Fetching OpenAPI specification from URL: {SpecUrl}", specUrl);
+            _logger.LogInformation("Fetching OpenAPI specification from URL: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
 
             if (!Uri.IsWellFormedUriString(specUrl, UriKind.Absolute))
             {
@@ -1094,7 +1094,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch OpenAPI specification from URL: {SpecUrl}", specUrl);
+            _logger.LogError(ex, "Failed to fetch OpenAPI specification from URL: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
             throw new InvalidOperationException($"Failed to fetch OpenAPI specification from URL: {specUrl}", ex);
         }
     }

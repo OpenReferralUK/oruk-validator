@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Linq;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -273,15 +274,20 @@ public class SchemaResolverService : ISchemaResolverService
 
   /// <summary>
   /// Sanitizes a URL for safe logging by removing query parameters and fragments
+  /// and stripping any control characters (including newlines) that could be used
+  /// for log-forging attacks.
   /// </summary>
-  private static string SanitizeUrlForLogging(string url)
+  public static string SanitizeUrlForLogging(string url)
   {
     if (string.IsNullOrEmpty(url))
       return url;
 
+    // Strip control characters (including CR/LF) to prevent log forging
+    var cleaned = new string(url.Where(c => !char.IsControl(c)).ToArray());
+
     try
     {
-      if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+      if (Uri.TryCreate(cleaned, UriKind.Absolute, out var uri))
       {
         // Return URL without query string or fragment
         return $"{uri.Scheme}://{uri.Authority}{uri.AbsolutePath}";
