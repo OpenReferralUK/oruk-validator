@@ -282,8 +282,18 @@ public class SchemaResolverService : ISchemaResolverService
     if (string.IsNullOrEmpty(url))
       return url;
 
-    // Strip control characters (including CR/LF) to prevent log forging
-    var cleaned = new string(url.Where(c => !char.IsControl(c)).ToArray());
+    // Normalize whitespace and strip control characters (including CR/LF) to prevent log forging
+    var trimmed = url.Trim();
+    var cleaned = new string(trimmed.Where(c => !char.IsControl(c)).ToArray());
+
+    // Optionally limit length to avoid log flooding/obfuscation with attacker-controlled data
+    const int maxLength = 2048;
+    if (cleaned.Length > maxLength)
+    {
+      cleaned = cleaned.Substring(0, maxLength) + "...(truncated)";
+    }
+
+    return cleaned;
 
     try
     {
