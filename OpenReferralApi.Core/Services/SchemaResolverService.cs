@@ -293,8 +293,6 @@ public class SchemaResolverService : ISchemaResolverService
       cleaned = cleaned.Substring(0, maxLength) + "...(truncated)";
     }
 
-    return cleaned;
-
     try
     {
       if (Uri.TryCreate(cleaned, UriKind.Absolute, out var uri))
