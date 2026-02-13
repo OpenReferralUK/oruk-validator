@@ -13,7 +13,7 @@ concurrency:
 
 permissions:
   packages: read   # To pull from GHCR
-  contents: read
+  contents: write  # To create GitHub releases
 
 jobs:
   deploy-staging:
