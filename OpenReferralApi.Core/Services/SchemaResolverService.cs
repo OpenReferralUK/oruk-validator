@@ -293,31 +293,40 @@ public class SchemaResolverService : ISchemaResolverService
       cleaned = cleaned.Substring(0, maxLength) + "...(truncated)";
     }
 
-    return cleaned;
-
     try
     {
+      // Prefer to log without query string or fragment where possible
       if (Uri.TryCreate(cleaned, UriKind.Absolute, out var uri))
       {
         // Return URL without query string or fragment
-        return $"{uri.Scheme}://{uri.Authority}{uri.AbsolutePath}";
+        var sanitized = $"{uri.Scheme}://{uri.Authority}{uri.AbsolutePath}";
+        // Ensure no control characters are present in the final value
+        return new string(sanitized.Where(c => !char.IsControl(c)).ToArray());
       }
-      // For relative URLs, just remove query and fragment
-      var questionMarkIndex = url.IndexOf('?');
-      var hashIndex = url.IndexOf('#');
-      var endIndex = url.Length;
-      
+
+      // For relative or non-standard URLs, just remove query and fragment from the cleaned value
+      var questionMarkIndex = cleaned.IndexOf('?');
+      var hashIndex = cleaned.IndexOf('#');
+      var endIndex = cleaned.Length;
+
       if (questionMarkIndex > 0)
         endIndex = Math.Min(endIndex, questionMarkIndex);
       if (hashIndex > 0)
         endIndex = Math.Min(endIndex, hashIndex);
-      
-      return url[..endIndex];
+
+      var withoutQueryOrFragment = cleaned[..endIndex];
+      return new string(withoutQueryOrFragment.Where(c => !char.IsControl(c)).ToArray());
     }
     catch
     {
-      // If parsing fails, return truncated version
-      return url.Length > 100 ? url[..100] + "..." : url;
+      // If parsing fails, return a safely truncated, control-character-free version
+      var fallback = cleaned;
+      const int fallbackMaxLength = 100;
+      if (fallback.Length > fallbackMaxLength)
+      {
+        fallback = fallback[..fallbackMaxLength] + "...";
+      }
+      return new string(fallback.Where(c => !char.IsControl(c)).ToArray());
     }
   }
 
