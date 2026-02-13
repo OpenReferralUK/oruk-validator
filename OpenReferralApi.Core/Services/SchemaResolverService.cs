@@ -604,13 +604,13 @@ public class SchemaResolverService : ISchemaResolverService
   {
     try
     {
-      _logger.LogDebug("Creating JSON schema from JSON string with resolver. DocumentUri: {DocumentUri}", documentUri ?? "none");
+      _logger.LogDebug("Creating JSON schema from JSON string with resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
 
       // Pre-resolve all external and internal references using System.Text.Json based resolution
       string resolvedSchemaJson = schemaJson;
       try
       {
-        _logger.LogDebug("Pre-resolving all schema references with base URI: {DocumentUri}", documentUri ?? "none");
+        _logger.LogDebug("Pre-resolving all schema references with base URI: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
         resolvedSchemaJson = await ResolveAsync(schemaJson, documentUri, auth);
         _logger.LogDebug("Successfully pre-resolved all schema references");
       }

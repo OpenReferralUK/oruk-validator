@@ -54,7 +54,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     var (discoveredUrl, reason) = await _discoveryService.DiscoverOpenApiUrlAsync(request.BaseUrl, cancellationToken);
                     if (!string.IsNullOrEmpty(discoveredUrl))
                     {
-                        _logger.LogInformation("Discovered OpenAPI schema URL: {Url} (Reason: {Reason})", discoveredUrl, reason);
+                        _logger.LogInformation("Discovered OpenAPI schema URL: {Url} (Reason: {Reason})", SchemaResolverService.SanitizeUrlForLogging(discoveredUrl), reason);
                         request.OpenApiSchema ??= new OpenApiSchema();
                         request.OpenApiSchema.Url = discoveredUrl;
                         request.ProfileReason = reason;
