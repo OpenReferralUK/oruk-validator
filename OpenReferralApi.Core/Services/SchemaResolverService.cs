@@ -280,7 +280,7 @@ public class SchemaResolverService : ISchemaResolverService
   public static string SanitizeUrlForLogging(string url)
   {
     if (string.IsNullOrEmpty(url))
-      return url;
+      return string.Empty;
 
     // Normalize whitespace and strip control characters (including CR/LF) to prevent log forging
     var trimmed = url.Trim();
@@ -300,16 +300,16 @@ public class SchemaResolverService : ISchemaResolverService
         // Return URL without query string or fragment
         return $"{uri.Scheme}://{uri.Authority}{uri.AbsolutePath}";
       }
-      // For relative URLs, just remove query and fragment from the cleaned value
+      // For relative or non-absolute URLs, just remove query and fragment from the cleaned value
       var questionMarkIndex = cleaned.IndexOf('?');
       var hashIndex = cleaned.IndexOf('#');
       var endIndex = cleaned.Length;
-      
+
       if (questionMarkIndex > 0)
         endIndex = Math.Min(endIndex, questionMarkIndex);
       if (hashIndex > 0)
         endIndex = Math.Min(endIndex, hashIndex);
-      
+
       return cleaned[..endIndex];
     }
     catch
