@@ -53,9 +53,12 @@ jobs:
 
           docker pull ${IMAGE_NAME}:sha-${SHORT_SHA}
 
-          echo "Pushing to Heroku..."
-          heroku container:push web --app ${{ vars.HEROKU_STAGING_APP }} --tag sha-${SHORT_SHA}
+          # Tag the image for Heroku
+          docker tag ${IMAGE_NAME}:sha-${SHORT_SHA} registry.heroku.com/${{ vars.HEROKU_STAGING_APP }}/web:latest
 
+          echo "Pushing to Heroku..."
+          heroku container:push web --app ${{ vars.HEROKU_STAGING_APP }}
+          
           echo "Releasing..."
           heroku container:release web --app ${{ vars.HEROKU_STAGING_APP }}
 
@@ -101,8 +104,10 @@ jobs:
           docker pull ${IMAGE_NAME}:sha-${SHORT_SHA}
 
           echo "Pushing to Heroku..."
-          heroku container:push web --app ${{ vars.HEROKU_PROD_APP }} --tag sha-${SHORT_SHA}
+          docker tag ${IMAGE_NAME}:sha-${SHORT_SHA} registry.heroku.com/${{ vars.HEROKU_PROD_APP }}/web:latest
 
+          heroku container:push web --app ${{ vars.HEROKU_PROD_APP }}
+          
           echo "Releasing..."
           heroku container:release web --app ${{ vars.HEROKU_PROD_APP }}
 
