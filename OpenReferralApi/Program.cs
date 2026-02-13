@@ -15,10 +15,15 @@ using OpenReferralApi.Telemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddEnvironmentVariables("ORUK_API_");
+
+// Configure Serilog
+builder.Host.UseSerilog((context, configuration) =>
+    configuration.ReadFrom.Configuration(context.Configuration));
 
 // Configure strongly-typed options
 builder.Services.Configure<SpecificationOptions>(
@@ -311,6 +316,7 @@ app.MapHealthChecks("/health-check/live", new HealthCheckOptions
 });
 
 app.UseRouting();
+app.UseSerilogRequestLogging();
 app.UseCors();
 app.UseHttpsRedirection();
 app.UseResponseCaching();
@@ -320,3 +326,6 @@ app.UseRateLimiter();
 app.MapControllerRoute(name: "default", pattern: "{controller}/{action=Index}/{id?}");
 
 app.Run();
+
+// Ensure logs are flushed on shutdown
+Log.CloseAndFlush();

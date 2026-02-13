@@ -44,7 +44,9 @@ public class OpenApiController : ControllerBase
         [FromBody] OpenApiValidationRequest request,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Received OpenAPI validation request for BaseUrl: {BaseUrl}", request.BaseUrl);
+        _logger.LogInformation(
+            "Received OpenAPI validation request for BaseUrl: {BaseUrl}",
+            SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));
 
         if (string.IsNullOrEmpty(request.OpenApiSchema?.Url) && string.IsNullOrEmpty(request.BaseUrl))
         {
@@ -64,7 +66,9 @@ public class OpenApiController : ControllerBase
 
         var result = await _openApiValidationService.ValidateOpenApiSpecificationAsync(request, cancellationToken);
         
-        _logger.LogInformation("Validation completed for BaseUrl: {BaseUrl}", request.BaseUrl);
+        _logger.LogInformation(
+            "Validation completed for BaseUrl: {BaseUrl}",
+            SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));
 
         // Return raw result or mapped to ValidationResponse format based on option
         if (request.Options?.ReturnRawResult == true)

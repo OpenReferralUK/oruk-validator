@@ -280,11 +280,29 @@ public class SchemaResolverService : ISchemaResolverService
   public static string SanitizeUrlForLogging(string url)
   {
     if (string.IsNullOrEmpty(url))
-      return url;
+      return string.Empty;
 
     // Normalize whitespace and strip control characters (including CR/LF) to prevent log forging
     var trimmed = url.Trim();
-    var cleaned = new string(trimmed.Where(c => !char.IsControl(c)).ToArray());
+    // Allow only a conservative set of URL-safe printable characters; replace others with '?'
+    var cleanedChars = trimmed
+      .Where(c => !char.IsControl(c))
+      .Select(c =>
+      {
+        // Unreserved and common reserved URL characters
+        const string allowedPunctuation = "-._~:/?#[]@!$&'()*+,;=%";
+        if ((c >= 'a' && c <= 'z') ||
+            (c >= 'A' && c <= 'Z') ||
+            (c >= '0' && c <= '9') ||
+            allowedPunctuation.IndexOf(c) >= 0)
+        {
+          return c;
+        }
+        // Replace any unusual characters with a placeholder to keep logs safe and readable
+        return '?';
+      })
+      .ToArray();
+    var cleaned = new string(cleanedChars);
 
     // Optionally limit length to avoid log flooding/obfuscation with attacker-controlled data
     const int maxLength = 2048;
@@ -293,31 +311,39 @@ public class SchemaResolverService : ISchemaResolverService
       cleaned = cleaned.Substring(0, maxLength) + "...(truncated)";
     }
 
-    return cleaned;
-
     try
     {
+      // Prefer to log without query string or fragment where possible
       if (Uri.TryCreate(cleaned, UriKind.Absolute, out var uri))
       {
         // Return URL without query string or fragment
-        return $"{uri.Scheme}://{uri.Authority}{uri.AbsolutePath}";
+        var sanitized = $"{uri.Scheme}://{uri.Authority}{uri.AbsolutePath}";
+        // Ensure no control characters are present in the final value
+        return new string(sanitized.Where(c => !char.IsControl(c)).ToArray());
       }
-      // For relative URLs, just remove query and fragment
-      var questionMarkIndex = url.IndexOf('?');
-      var hashIndex = url.IndexOf('#');
-      var endIndex = url.Length;
-      
+      // For relative or non-absolute URLs, just remove query and fragment from the cleaned value
+      var questionMarkIndex = cleaned.IndexOf('?');
+      var hashIndex = cleaned.IndexOf('#');
+      var endIndex = cleaned.Length;
+
       if (questionMarkIndex > 0)
         endIndex = Math.Min(endIndex, questionMarkIndex);
       if (hashIndex > 0)
         endIndex = Math.Min(endIndex, hashIndex);
-      
-      return url[..endIndex];
+
+      var withoutQueryOrFragment = cleaned[..endIndex];
+      return new string(withoutQueryOrFragment.Where(c => !char.IsControl(c)).ToArray());
     }
     catch
     {
-      // If parsing fails, return truncated version
-      return url.Length > 100 ? url[..100] + "..." : url;
+      // If parsing fails, return a safely truncated, control-character-free version
+      var fallback = cleaned;
+      const int fallbackMaxLength = 100;
+      if (fallback.Length > fallbackMaxLength)
+      {
+        fallback = fallback[..fallbackMaxLength] + "...";
+      }
+      return new string(fallback.Where(c => !char.IsControl(c)).ToArray());
     }
   }
 
@@ -604,13 +630,13 @@ public class SchemaResolverService : ISchemaResolverService
   {
     try
     {
-      _logger.LogDebug("Creating JSON schema from JSON string with resolver. DocumentUri: {DocumentUri}", documentUri ?? "none");
+      _logger.LogDebug("Creating JSON schema from JSON string with resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
 
       // Pre-resolve all external and internal references using System.Text.Json based resolution
       string resolvedSchemaJson = schemaJson;
       try
       {
-        _logger.LogDebug("Pre-resolving all schema references with base URI: {DocumentUri}", documentUri ?? "none");
+        _logger.LogDebug("Pre-resolving all schema references with base URI: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
         resolvedSchemaJson = await ResolveAsync(schemaJson, documentUri, auth);
         _logger.LogDebug("Successfully pre-resolved all schema references");
       }

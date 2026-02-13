@@ -48,6 +48,9 @@ jobs:
           SHORT_SHA=$(echo ${{ github.event.workflow_run.head_sha }} | cut -c1-7)
           echo "Deploying tested image: ${IMAGE_NAME}:sha-${SHORT_SHA} → ${{ vars.HEROKU_STAGING_APP }}"
 
+          # Login to GHCR
+          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
           docker pull ${IMAGE_NAME}:sha-${SHORT_SHA}
 
           echo "Pushing to Heroku..."
@@ -91,6 +94,9 @@ jobs:
         run: |
           SHORT_SHA=$(echo ${{ github.event.workflow_run.head_sha }} | cut -c1-7)
           echo "Deploying tested image: ${IMAGE_NAME}:sha-${SHORT_SHA} → ${{ vars.HEROKU_PROD_APP }}"
+
+          # Login to GHCR
+          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
           docker pull ${IMAGE_NAME}:sha-${SHORT_SHA}
 
