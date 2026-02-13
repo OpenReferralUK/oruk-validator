@@ -661,7 +661,7 @@ public class SchemaResolverService : ISchemaResolverService
       // Set base URI for any remaining reference resolution if provided
       if (!string.IsNullOrEmpty(documentUri))
       {
-        _logger.LogDebug("Loading schema with base URI: {DocumentUri}", documentUri);
+        _logger.LogDebug("Loading schema with base URI: {DocumentUri}", SanitizeUrlForLogging(documentUri));
         settings.BaseUri = new Uri(documentUri);
       }
 
