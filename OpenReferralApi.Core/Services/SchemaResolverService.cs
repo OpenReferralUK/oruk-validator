@@ -4,15 +4,14 @@ using System.Linq;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Schema;
+using Json.Schema;
 using OpenReferralApi.Core.Models;
 
 namespace OpenReferralApi.Core.Services;
 
 /// <summary>
 /// Service for resolving JSON Schema references ($ref) and creating schemas with proper resolution.
-/// Uses System.Text.Json for reference resolution and Newtonsoft.Json.Schema for JSchema creation.
+/// Uses System.Text.Json for reference resolution and JsonSchema.Net for schema validation.
 /// Handles both external URL references and internal JSON pointer references.
 /// </summary>
 public interface ISchemaResolverService
@@ -36,16 +35,16 @@ public interface ISchemaResolverService
   /// <returns>The fully resolved schema as a JsonNode.</returns>
   Task<JsonNode?> ResolveAsync(JsonNode schema, string? baseUri = null, DataSourceAuthentication? auth = null);
 
-  // Newtonsoft.Json.Schema based schema creation methods
+  // JsonSchema.Net based schema creation methods
   /// <summary>
   /// Creates a JSON schema from JSON string with proper reference resolution
   /// </summary>
-  Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, CancellationToken cancellationToken = default);
+  Task<JsonSchema> CreateSchemaFromJsonAsync(string schemaJson, CancellationToken cancellationToken = default);
 
   /// <summary>
   /// Creates a JSON schema from JSON string with proper reference resolution and base URI
   /// </summary>
-  Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri, DataSourceAuthentication? auth = null, CancellationToken cancellationToken = default);
+  Task<JsonSchema> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri, DataSourceAuthentication? auth = null, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -60,6 +59,18 @@ public interface ISchemaResolverService
 /// </remarks>
 public class SchemaResolverService : ISchemaResolverService
 {
+  private static readonly HashSet<string> NonSchemaKeywords = new(StringComparer.OrdinalIgnoreCase)
+  {
+    "name",
+    "path",
+    "datapackage_metadata",
+    "constraints",
+    "core",
+    "tabular_required",
+    "datapackage_type",
+    "example",
+    "page"
+  };
   private readonly Dictionary<string, JsonNode?> _refCache = new();
   private readonly HttpClient _httpClient;
   private readonly ILogger<SchemaResolverService> _logger;
@@ -617,58 +628,228 @@ public class SchemaResolverService : ISchemaResolverService
   /// <summary>
   /// Creates a JSON schema from JSON string with proper reference resolution
   /// </summary>
-  public async Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, CancellationToken cancellationToken = default)
+  public async Task<JsonSchema> CreateSchemaFromJsonAsync(string schemaJson, CancellationToken cancellationToken = default)
   {
     return await CreateSchemaFromJsonAsync(schemaJson, null, null, cancellationToken);
   }
 
   /// <summary>
-  /// Creates a JSON schema from JSON string with proper reference resolution and base URI
-  /// Uses System.Text.Json based resolution to pre-resolve all $ref before creating JSchema
+  /// Creates a JSON schema from JSON string with proper reference resolution and base URI.
+  /// Handles dynamic anchor conflicts that may arise from duplicate schema definitions.
   /// </summary>
-  public async Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri, DataSourceAuthentication? auth = null, CancellationToken cancellationToken = default)
+  /// <summary>
+  /// Removes competing dynamic anchors from allOf/anyOf/oneOf to prevent JsonSchema.Net registry errors.
+  /// When multiple subschemas in a composition keyword have the same dynamic anchor, only keeps it in the first.
+  /// </summary>
+  private JsonNode? RemoveCompetingDynamicAnchors(JsonNode? schema)
+  {
+    if (schema is JsonObject jsonObject)
+    {
+      var result = new JsonObject();
+      var compositionKeywords = new[] { "allOf", "anyOf", "oneOf" };
+
+      foreach (var kvp in jsonObject)
+      {
+        // Handle composition keywords specially
+        if (compositionKeywords.Contains(kvp.Key) && kvp.Value is JsonArray subschemas)
+        {
+          var seenAnchors = new HashSet<string>();
+          var cleanedSubschemas = new JsonArray();
+
+          foreach (var subschema in subschemas)
+          {
+            if (subschema is JsonObject subObj)
+            {
+              var cleanedSubObj = new JsonObject();
+              
+              foreach (var subKvp in subObj)
+              {
+                // Skip $dynamicAnchor if we've seen it before in this composition
+                if (subKvp.Key == "$dynamicAnchor" && subKvp.Value is JsonValue anchorValue)
+                {
+                  var anchorName = anchorValue.GetValue<string>();
+                  if (seenAnchors.Contains(anchorName))
+                  {
+                    _logger.LogDebug("Removing competing dynamic anchor: {Anchor} from {Keyword}", anchorName, kvp.Key);
+                    continue;
+                  }
+                  seenAnchors.Add(anchorName);
+                }
+
+                cleanedSubObj[subKvp.Key] = RemoveCompetingDynamicAnchors(subKvp.Value);
+              }
+              
+              cleanedSubschemas.Add(cleanedSubObj);
+            }
+            else
+            {
+              cleanedSubschemas.Add(RemoveCompetingDynamicAnchors(subschema));
+            }
+          }
+
+          result[kvp.Key] = cleanedSubschemas;
+        }
+        else
+        {
+          // Recursively clean other properties
+          result[kvp.Key] = RemoveCompetingDynamicAnchors(kvp.Value);
+        }
+      }
+
+      return result;
+    }
+    else if (schema is JsonArray jsonArray)
+    {
+      var result = new JsonArray();
+      foreach (var item in jsonArray)
+      {
+        result.Add(RemoveCompetingDynamicAnchors(item));
+      }
+      return result;
+    }
+
+    return schema?.DeepClone();
+  }
+
+  /// <summary>
+  /// Globally deduplicates dynamic anchors across the entire schema.
+  /// Removes all duplicate dynamic anchors, keeping only the first occurrence of each anchor name.
+  /// This prevents JsonSchema.Net from throwing "duplicate key" errors when building the schema.
+  /// </summary>
+  private JsonNode? GloballyDeduplicateDynamicAnchors(JsonNode? schema, HashSet<string>? seenAnchors = null)
+  {
+    seenAnchors ??= new HashSet<string>();
+
+    if (schema is JsonObject jsonObject)
+    {
+      var result = new JsonObject();
+      
+      foreach (var kvp in jsonObject)
+      {
+        // Handle dynamic anchors globally - remove if already seen
+        if (kvp.Key == "$dynamicAnchor" && kvp.Value is JsonValue anchorValue)
+        {
+          var anchorName = anchorValue.GetValue<string>();
+          if (seenAnchors.Contains(anchorName))
+          {
+            _logger.LogDebug("Removing duplicate dynamic anchor globally: {Anchor}", anchorName);
+            continue; // Skip this anchor, we've seen it before
+          }
+          seenAnchors.Add(anchorName);
+        }
+
+        // Recursively process all properties with the same seen anchors set
+        result[kvp.Key] = GloballyDeduplicateDynamicAnchors(kvp.Value, seenAnchors);
+      }
+
+      return result;
+    }
+    else if (schema is JsonArray jsonArray)
+    {
+      var result = new JsonArray();
+      foreach (var item in jsonArray)
+      {
+        result.Add(GloballyDeduplicateDynamicAnchors(item, seenAnchors));
+      }
+      return result;
+    }
+
+    return schema?.DeepClone();
+  }
+
+  /// <summary>
+  /// Completely strips ALL dynamic anchors AND schema IDs from the schema to prevent registry conflicts.
+  /// Used to avoid "duplicate key" and "overwriting registered schemas" errors from JsonSchema.Net.
+  /// </summary>
+  private JsonNode? StripAllDynamicAnchorsAndIds(JsonNode? schema)
+  {
+    if (schema is JsonObject jsonObject)
+    {
+      var result = new JsonObject();
+      
+      foreach (var kvp in jsonObject)
+      {
+        // Skip all $dynamicAnchor and $id properties
+        if (kvp.Key == "$dynamicAnchor" || kvp.Key == "$id")
+        {
+          _logger.LogDebug("Stripping {Property} from schema", kvp.Key);
+          continue;
+        }
+
+        // Recursively strip from all values
+        result[kvp.Key] = StripAllDynamicAnchorsAndIds(kvp.Value);
+      }
+
+      return result;
+    }
+    else if (schema is JsonArray jsonArray)
+    {
+      var result = new JsonArray();
+      foreach (var item in jsonArray)
+      {
+        result.Add(StripAllDynamicAnchorsAndIds(item));
+      }
+      return result;
+    }
+
+    return schema?.DeepClone();
+  }
+
+  /// <summary>
+  /// Removes non-standard keywords used by OpenReferral schema files
+  /// that are not part of the JSON Schema vocabularies.
+  /// </summary>
+  private JsonNode? StripNonSchemaKeywords(JsonNode? schema)
+  {
+    if (schema is JsonObject jsonObject)
+    {
+      var result = new JsonObject();
+
+      foreach (var kvp in jsonObject)
+      {
+        if (NonSchemaKeywords.Contains(kvp.Key))
+        {
+          _logger.LogDebug("Stripping non-schema keyword: {Keyword}", kvp.Key);
+          continue;
+        }
+
+        result[kvp.Key] = StripNonSchemaKeywords(kvp.Value);
+      }
+
+      return result;
+    }
+    else if (schema is JsonArray jsonArray)
+    {
+      var result = new JsonArray();
+      foreach (var item in jsonArray)
+      {
+        result.Add(StripNonSchemaKeywords(item));
+      }
+      return result;
+    }
+
+    return schema?.DeepClone();
+  }
+
+  public async Task<JsonSchema> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri, DataSourceAuthentication? auth = null, CancellationToken cancellationToken = default)
   {
     try
     {
       _logger.LogDebug("Creating JSON schema from JSON string with resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
 
-      // Pre-resolve all external and internal references using System.Text.Json based resolution
-      string resolvedSchemaJson = schemaJson;
-      try
-      {
-        _logger.LogDebug("Pre-resolving all schema references with base URI: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
-        resolvedSchemaJson = await ResolveAsync(schemaJson, documentUri, auth);
-        _logger.LogDebug("Successfully pre-resolved all schema references");
-      }
-      catch (Exception ex)
-      {
-        _logger.LogWarning(ex, "Failed to pre-resolve schema, continuing with original schema");
-        // Continue with original schema if resolution fails
-        resolvedSchemaJson = schemaJson;
-      }
+      // Proactively strip dynamic anchors and schema IDs from the input schema upfront.
+      // JsonSchema.Net's registry does not permit duplicate anchor names or schema IDs, which can occur
+      // when schemas contain the same identifiers in multiple places.
+      // These are not essential for validation with JsonSchema.Net, so removing them
+      // avoids all registry conflicts.
+      var jsonNode = JsonNode.Parse(schemaJson);
+      var cleanedNode = StripAllDynamicAnchorsAndIds(jsonNode);
+      cleanedNode = StripNonSchemaKeywords(cleanedNode);
+      var cleanedJson = cleanedNode?.ToJsonString() ?? schemaJson;
 
-      // Create JSchema with the fully resolved schema (no more $ref to resolve)
-      var resolver = new JSchemaUrlResolver();
-
-      // Parse the schema with resolver settings
-      using var reader = new JsonTextReader(new StringReader(resolvedSchemaJson));
-
-      var settings = new JSchemaReaderSettings
-      {
-        Resolver = resolver
-      };
-
-      // Set base URI for any remaining reference resolution if provided
-      if (!string.IsNullOrEmpty(documentUri))
-      {
-        _logger.LogDebug("Loading schema with base URI: {DocumentUri}", documentUri);
-        settings.BaseUri = new Uri(documentUri);
-      }
-
-      var schema = await Task.Run(() => JSchema.Parse(resolvedSchemaJson, settings), cancellationToken);
-
-      _logger.LogDebug("Successfully created schema with reference resolution");
-
+      var buildOptions = new BuildOptions();
+      var schema = await Task.Run(() => JsonSchema.FromText(cleanedJson, buildOptions), cancellationToken);
+      _logger.LogDebug("Successfully created schema");
       return schema;
     }
     catch (Exception ex)
@@ -676,6 +857,112 @@ public class SchemaResolverService : ISchemaResolverService
       _logger.LogError(ex, "Failed to create JSON schema from JSON with resolver. DocumentUri: {DocumentUri}", documentUri ?? "none");
       throw;
     }
+  }
+
+  /// <summary>
+  /// Completely strips ALL dynamic anchors from the schema.
+  /// Used as a last-resort fallback when deduplication still fails.
+  /// </summary>
+  private JsonNode? StripAllDynamicAnchors(JsonNode? schema)
+  {
+    if (schema is JsonObject jsonObject)
+    {
+      var result = new JsonObject();
+      
+      foreach (var kvp in jsonObject)
+      {
+        // Skip all $dynamicAnchor properties
+        if (kvp.Key == "$dynamicAnchor")
+        {
+          _logger.LogDebug("Stripping $dynamicAnchor from schema");
+          continue;
+        }
+
+        // Recursively strip from all values
+        result[kvp.Key] = StripAllDynamicAnchors(kvp.Value);
+      }
+
+      return result;
+    }
+    else if (schema is JsonArray jsonArray)
+    {
+      var result = new JsonArray();
+      foreach (var item in jsonArray)
+      {
+        result.Add(StripAllDynamicAnchors(item));
+      }
+      return result;
+    }
+
+    return schema?.DeepClone();
+  }
+
+  /// <summary>
+  /// More aggressively removes ALL dynamic anchors from allOf/anyOf/oneOf subschemas.
+  /// Used as a fallback when the standard competing anchor removal still fails.
+  /// </summary>
+  private JsonNode? RemoveAllDynamicAnchorsFromCompositions(JsonNode? schema)
+  {
+    if (schema is JsonObject jsonObject)
+    {
+      var result = new JsonObject();
+      var compositionKeywords = new[] { "allOf", "anyOf", "oneOf" };
+
+      foreach (var kvp in jsonObject)
+      {
+        // Handle composition keywords - strip ALL dynamic anchors from subschemas
+        if (compositionKeywords.Contains(kvp.Key) && kvp.Value is JsonArray subschemas)
+        {
+          var cleanedSubschemas = new JsonArray();
+
+          foreach (var subschema in subschemas)
+          {
+            if (subschema is JsonObject subObj)
+            {
+              var cleanedSubObj = new JsonObject();
+              
+              foreach (var subKvp in subObj)
+              {
+                // Skip all $dynamicAnchor properties in composition subschemas
+                if (subKvp.Key == "$dynamicAnchor")
+                {
+                  _logger.LogDebug("Removing $dynamicAnchor from {Keyword} subschema", kvp.Key);
+                  continue;
+                }
+
+                cleanedSubObj[subKvp.Key] = RemoveAllDynamicAnchorsFromCompositions(subKvp.Value);
+              }
+              
+              cleanedSubschemas.Add(cleanedSubObj);
+            }
+            else
+            {
+              cleanedSubschemas.Add(RemoveAllDynamicAnchorsFromCompositions(subschema));
+            }
+          }
+
+          result[kvp.Key] = cleanedSubschemas;
+        }
+        else
+        {
+          // Recursively clean other properties
+          result[kvp.Key] = RemoveAllDynamicAnchorsFromCompositions(kvp.Value);
+        }
+      }
+
+      return result;
+    }
+    else if (schema is JsonArray jsonArray)
+    {
+      var result = new JsonArray();
+      foreach (var item in jsonArray)
+      {
+        result.Add(RemoveAllDynamicAnchorsFromCompositions(item));
+      }
+      return result;
+    }
+
+    return schema?.DeepClone();
   }
 }
 

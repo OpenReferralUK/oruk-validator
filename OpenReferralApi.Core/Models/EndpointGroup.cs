@@ -1,5 +1,5 @@
 using System;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 
 namespace OpenReferralApi.Core.Models;
 
@@ -21,8 +21,8 @@ public class EndpointInfo
 {
     public string Path { get; set; } = string.Empty;
     public string Method { get; set; } = string.Empty;
-    public JObject Operation { get; set; } = new();
-    public JObject PathItem { get; set; } = new();
+    public JsonObject Operation { get; set; } = new();
+    public JsonObject PathItem { get; set; } = new();
     public bool IsParameterized => Path.Contains('{');
     public string RootPath => GetRootPath(Path);
 

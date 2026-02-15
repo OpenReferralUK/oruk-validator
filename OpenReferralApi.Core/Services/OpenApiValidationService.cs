@@ -1,10 +1,10 @@
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Schema;
+using Json.Schema;
 using OpenReferralApi.Core.Models;
-using Newtonsoft.Json;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Diagnostics;
@@ -71,16 +71,21 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // Get OpenAPI specification
-            JObject openApiSpec;
+            JsonObject? openApiSpec = null;
             if (!string.IsNullOrEmpty(request.OpenApiSchema?.Url))
             {
-                var fetchedSchema = await FetchOpenApiSpecFromUrlAsync(request.OpenApiSchema.Url, request.OpenApiSchema.Authentication, cancellationToken);
-                openApiSpec = JObject.Parse(fetchedSchema.ToString());
+                var specJsonString = await FetchOpenApiSpecFromUrlAsync(request.OpenApiSchema.Url, request.OpenApiSchema.Authentication, cancellationToken);
+                openApiSpec = JsonNode.Parse(specJsonString) as JsonObject;
                 // External references are already resolved by FetchOpenApiSpecFromUrlAsync
             }
             else
             {
                 throw new ArgumentException("OpenAPI schema URL must be provided or BaseUrl must allow discovery");
+            }
+
+            if (openApiSpec == null)
+            {
+                throw new InvalidOperationException("Failed to parse OpenAPI specification as JSON object");
             }
 
             // Validate the OpenAPI specification
@@ -153,7 +158,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         return result;
     }
 
-    private async Task<OpenApiSpecificationValidation> ValidateOpenApiSpecificationInternalAsync(JObject openApiSpec, CancellationToken cancellationToken = default)
+    private async Task<OpenApiSpecificationValidation> ValidateOpenApiSpecificationInternalAsync(JsonObject openApiSpec, CancellationToken cancellationToken = default)
     {
         var validation = new OpenApiSpecificationValidation();
         var errors = new List<ValidationError>();
@@ -162,7 +167,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             _logger.LogInformation("Validating OpenAPI specification");
 
-            // We already have a JObject, so we can use it directly
+            // We already have a JsonObject, so we can use it directly
             await ValidateOpenApiSpecObjectAsync(openApiSpec, validation, errors, null, cancellationToken);
 
             // Add detailed analysis
@@ -193,10 +198,10 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// Common validation logic for OpenAPI specifications
     /// </summary>
     private async Task ValidateOpenApiSpecObjectAsync(
-        JObject specObject,
+        JsonObject specObject,
         OpenApiSpecificationValidation validation,
         List<ValidationError> errors,
-        JSchema? originalSchema = null,
+        JsonSchema? originalSchema = null,
         CancellationToken cancellationToken = default)
     {
         // Check for required OpenAPI fields
@@ -275,7 +280,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         else
         {
             var paths = specObject["paths"];
-            if (paths is JObject pathsObject)
+            if (paths is JsonObject pathsObject)
             {
                 validation.EndpointCount = pathsObject.Count;
 
@@ -354,7 +359,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             validation.IsValid, validation.Errors.Count);
     }
 
-    private async Task<List<EndpointTestResult>> TestEndpointsAsync(JObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, string? documentUri, CancellationToken cancellationToken = default)
+    private async Task<List<EndpointTestResult>> TestEndpointsAsync(JsonObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, string? documentUri, CancellationToken cancellationToken = default)
     {
         var results = new List<EndpointTestResult>();
 
@@ -362,7 +367,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             _logger.LogInformation("Testing OpenAPI endpoints with intelligent dependency ordering");
 
-            // We already have a JObject, so use it directly
+            // We already have a JsonObject, so use it directly
             if (!openApiSpec.ContainsKey("paths"))
             {
                 _logger.LogWarning("No paths found in OpenAPI specification");
@@ -370,7 +375,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             var paths = openApiSpec["paths"];
-            if (paths is not JObject pathsObject)
+            if (paths is not JsonObject pathsObject)
             {
                 return results;
             }
@@ -434,7 +439,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <param name="specObject">The parsed OpenAPI specification object</param>
     /// <param name="version">The OpenAPI or Swagger version string</param>
     /// <returns>The schema URI for validation, or null if version is not supported</returns>
-    private static string? GetOpenApiSchemaUri(JObject specObject, string? version)
+    private static string? GetOpenApiSchemaUri(JsonObject specObject, string? version)
     {
         // First, check if the spec explicitly declares a jsonSchemaDialect (OpenAPI 3.1+)
         if (specObject.ContainsKey("jsonSchemaDialect"))
@@ -473,7 +478,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         };
     }
 
-    private async Task<EndpointTestResult> TestSingleEndpointAsync(string path, string method, JObject operation, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, SemaphoreSlim semaphore, JObject openApiDocument, string? documentUri, JObject pathItem, CancellationToken cancellationToken, string? testedId = null)
+    private async Task<EndpointTestResult> TestSingleEndpointAsync(string path, string method, JsonObject operation, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, SemaphoreSlim semaphore, JsonObject openApiDocument, string? documentUri, JsonObject pathItem, CancellationToken cancellationToken, string? testedId = null)
     {
         await semaphore.WaitAsync(cancellationToken);
 
@@ -632,14 +637,14 @@ public class OpenApiValidationService : IOpenApiValidationService
         EndpointTestResult result,
         string path,
         string method,
-        JObject operation,
+        JsonObject operation,
         string baseUrl,
         OpenApiValidationOptions options,
         DataSourceAuthentication? auth,
-        JArray resolvedParams,
-        JObject openApiDocument,
+        JsonArray resolvedParams,
+        JsonObject openApiDocument,
         string? documentUri,
-        JObject pathItem,
+        JsonObject pathItem,
         CancellationToken cancellationToken)
     {
         _logger.LogInformation("Testing paginated endpoint: {Method} {Path}", method, path);
@@ -755,17 +760,17 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         try
         {
-            var json = JToken.Parse(responseBody);
+            var json = JsonNode.Parse(responseBody);
             int? totalPages = null;
             int itemCount = 0;
 
             // Try to find total_pages field (common in paginated APIs)
-            var totalPagesToken = json.SelectToken("$.total_pages") ??
-                                  json.SelectToken("$.totalPages") ??
-                                  json.SelectToken("$.pagination.total_pages") ??
-                                  json.SelectToken("$.pagination.totalPages") ??
-                                  json.SelectToken("$.meta.total_pages") ??
-                                  json.SelectToken("$.meta.totalPages");
+            var totalPagesToken = SelectJsonPath(json, "$.total_pages") ??
+                                  SelectJsonPath(json, "$.totalPages") ??
+                                  SelectJsonPath(json, "$.pagination.total_pages") ??
+                                  SelectJsonPath(json, "$.pagination.totalPages") ??
+                                  SelectJsonPath(json, "$.meta.total_pages") ??
+                                  SelectJsonPath(json, "$.meta.totalPages");
 
             if (totalPagesToken != null && int.TryParse(totalPagesToken.ToString(), out var pages))
             {
@@ -773,16 +778,16 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // Count items in common collection properties
-            if (json is JArray array)
+            if (json is JsonArray array)
             {
                 itemCount = array.Count;
             }
-            else if (json is JObject obj)
+            else if (json is JsonObject obj)
             {
                 // Check common collection property names
                 foreach (var propName in new[] { "data", "items", "results", "content", "contents" })
                 {
-                    if (obj[propName] is JArray items)
+                    if (obj[propName] is JsonArray items)
                     {
                         itemCount = items.Count;
                         break;
@@ -809,7 +814,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
     }
 
-    private string BuildFullUrl(string baseUrl, string path, JArray resolvedParams, OpenApiValidationOptions options, int? pageNumber = null)
+    private string BuildFullUrl(string baseUrl, string path, JsonArray resolvedParams, OpenApiValidationOptions options, int? pageNumber = null)
     {
         var url = $"{baseUrl.TrimEnd('/')}{path}";
 
@@ -827,12 +832,12 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// Checks if the resolved parameters array contains a 'page' query parameter.
     /// Parameters should already be resolved (references expanded, path and operation params merged).
     /// </summary>
-    private bool HasPageParameter(JArray resolvedParams)
+    private bool HasPageParameter(JsonArray resolvedParams)
     {
         _logger.LogDebug("Checking {Count} parameters for 'page' parameter", resolvedParams.Count);
         foreach (var param in resolvedParams)
         {
-            if (param is JObject paramObj)
+            if (param is JsonObject paramObj)
             {
                 var name = paramObj["name"]?.ToString();
                 var inLocation = paramObj["in"]?.ToString();
@@ -852,31 +857,37 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     /// <summary>
     /// Merges path-level and operation-level parameters.
-    /// Returns a JArray of parameter objects (references already resolved upstream).
+    /// Returns a JsonArray of parameter objects (references already resolved upstream).
     /// </summary>
-    private JArray ResolveOperationParameters(JObject operation, JObject pathItem, JObject openApiDocument)
+    private JsonArray ResolveOperationParameters(JsonObject operation, JsonObject pathItem, JsonObject openApiDocument)
     {
-        var resolvedParams = new JArray();
+        var resolvedParams = new JsonArray();
 
         // Add path-level parameters first (these are inherited by all operations)
-        if (pathItem["parameters"] is JArray pathParams)
+        if (pathItem["parameters"] is JsonArray pathParams)
         {
             _logger.LogDebug("Found {Count} path-level parameters", pathParams.Count);
             foreach (var param in pathParams)
             {
-                resolvedParams.Add(param);
-                _logger.LogDebug("Path-level param: {Param}", param.ToString());
+                if (param != null)
+                {
+                    resolvedParams.Add(param.DeepClone());
+                }
+                _logger.LogDebug("Path-level param: {Param}", param?.ToString() ?? "null");
             }
         }
 
         // Add operation-level parameters (these can override path-level params)
-        if (operation["parameters"] is JArray operationParams)
+        if (operation["parameters"] is JsonArray operationParams)
         {
             _logger.LogDebug("Found {Count} operation-level parameters", operationParams.Count);
             foreach (var param in operationParams)
             {
-                resolvedParams.Add(param);
-                _logger.LogDebug("Operation-level param: {Param}", param.ToString());
+                if (param != null)
+                {
+                    resolvedParams.Add(param.DeepClone());
+                }
+                _logger.LogDebug("Operation-level param: {Param}", param?.ToString() ?? "null");
             }
         }
 
@@ -884,7 +895,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         return resolvedParams;
     }
 
-    private async Task<HttpTestResult> ExecuteHttpRequestAsync(string url, string method, JObject operation, OpenApiValidationOptions options, DataSourceAuthentication? authentication, CancellationToken cancellationToken, string? testedId = null)
+    private async Task<HttpTestResult> ExecuteHttpRequestAsync(string url, string method, JsonObject operation, OpenApiValidationOptions options, DataSourceAuthentication? authentication, CancellationToken cancellationToken, string? testedId = null)
     {
         var testResult = new HttpTestResult
         {
@@ -964,28 +975,28 @@ public class OpenApiValidationService : IOpenApiValidationService
         return testResult;
     }
 
-    private async Task ValidateResponseAsync(HttpTestResult testResult, JObject operation, JObject openApiDocument, string? documentUri, CancellationToken cancellationToken)
+    private async Task ValidateResponseAsync(HttpTestResult testResult, JsonObject operation, JsonObject openApiDocument, string? documentUri, CancellationToken cancellationToken)
     {
         try
         {
             if (operation.ContainsKey("responses"))
             {
                 var responses = operation["responses"];
-                if (responses is JObject responsesObject)
+                if (responses is JsonObject responsesObject)
                 {
                     var statusCode = testResult.ResponseStatusCode?.ToString() ?? "default";
                     var responseSchema = responsesObject[statusCode] ?? responsesObject["default"];
 
-                    if (responseSchema is JObject responseSchemaObject && responseSchemaObject.ContainsKey("content"))
+                    if (responseSchema is JsonObject responseSchemaObject && responseSchemaObject.ContainsKey("content"))
                     {
                         var content = responseSchemaObject["content"];
-                        if (content is JObject contentObject)
+                        if (content is JsonObject contentObject)
                         {
                             // Find JSON content type
-                            var jsonContent = contentObject.Properties()
-                                .FirstOrDefault(p => p.Name.Contains("application/json"));
+                            var jsonContent = contentObject
+                                .FirstOrDefault(p => p.Key.Contains("application/json"));
 
-                            if (jsonContent?.Value is JObject jsonContentObject && jsonContentObject.ContainsKey("schema"))
+                            if (jsonContent.Value is JsonObject jsonContentObject && jsonContentObject.ContainsKey("schema"))
                             {
                                 var schema = jsonContentObject["schema"];
                                 if (schema != null)
@@ -995,7 +1006,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                                     // Use standard validation - SchemaResolverService handles all reference resolution
                                     var validationRequest = new ValidationRequest
                                     {
-                                        JsonData = JsonConvert.DeserializeObject(testResult.ResponseBody ?? "{}"),
+                                        JsonData = JsonSerializer.Deserialize<object>(testResult.ResponseBody ?? "{}"),
                                         Schema = schema
                                     };
                                     var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
@@ -1014,33 +1025,47 @@ public class OpenApiValidationService : IOpenApiValidationService
     }
 
     /// <summary>
-    /// Validates JSON data against a JSchema directly, similar to JsonValidatorService but without the full request processing
+    /// Validates JSON data against a JsonSchema directly, similar to JsonValidatorService but without the full request processing
     /// </summary>
-    private List<ValidationError> ValidateJsonAgainstSchema(string jsonData, JSchema schema)
+    private List<ValidationError> ValidateJsonAgainstSchema(string jsonData, JsonSchema schema)
     {
         var errors = new List<ValidationError>();
 
         try
         {
             // Parse JSON to validate format
-            var jsonToken = JToken.Parse(jsonData);
-
-            // Perform validation using Newtonsoft.Json.Schema
-            var validationErrors = new List<ValidationError>();
-            jsonToken.Validate(schema, (sender, args) =>
+            var jsonNode = JsonNode.Parse(jsonData);
+            if (jsonNode == null)
             {
-                validationErrors.Add(new ValidationError
+                errors.Add(new ValidationError
                 {
-                    Path = args.Path ?? "",
-                    Message = args.Message,
-                    ErrorCode = "VALIDATION_ERROR",
+                    Path = "",
+                    Message = "Failed to parse JSON",
+                    ErrorCode = "INVALID_JSON",
                     Severity = "Error"
                 });
-            });
+                return errors;
+            }
 
-            errors.AddRange(validationErrors);
+            // Perform validation using Json.Schema
+            // Convert JsonNode to JsonElement for schema validation
+            var jsonString = JsonSerializer.Serialize(jsonNode);
+            using var doc = JsonDocument.Parse(jsonString);
+            var evaluationResults = schema.Evaluate(doc.RootElement);
+            if (!evaluationResults.IsValid)
+            {
+                var validationErrorsList = new List<ValidationError>();
+                foreach (var error in evaluationResults.Details ?? Enumerable.Empty<EvaluationResults>())
+                {
+                    if (error != null)
+                    {
+                        AddValidationErrors(error, validationErrorsList);
+                    }
+                }
+                errors.AddRange(validationErrorsList);
+            }
         }
-        catch (JsonReaderException ex)
+        catch (JsonException ex)
         {
             errors.Add(new ValidationError
             {
@@ -1064,7 +1089,54 @@ public class OpenApiValidationService : IOpenApiValidationService
         return errors;
     }
 
-    private async Task<JSchema> FetchOpenApiSpecFromUrlAsync(string specUrl, DataSourceAuthentication? auth, CancellationToken cancellationToken)
+    private static void AddValidationErrors(EvaluationResults results, List<ValidationError> errors)
+    {
+        if (!results.IsValid)
+        {
+            var path = results.InstanceLocation.ToString();
+            var message = "Validation failed at path: " + path;
+            
+            errors.Add(new ValidationError
+            {
+                Path = path,
+                Message = message,
+                ErrorCode = "VALIDATION_ERROR",
+                Severity = "Error"
+            });
+        }
+
+        if (results.Details != null)
+        {
+            foreach (var detail in results.Details)
+            {
+                if (detail != null)
+                {
+                    AddValidationErrors(detail, errors);
+                }
+            }
+        }
+    }
+
+    private static JsonNode? SelectJsonPath(JsonNode? node, string path)
+    {
+        if (node == null) return null;
+        
+        var parts = path.Split(new[] { "$.", "." }, StringSplitOptions.RemoveEmptyEntries);
+        var current = node;
+        
+        foreach (var part in parts)
+        {
+            if (current is not JsonObject obj || !obj.TryGetPropertyValue(part, out var next))
+            {
+                return null;
+            }
+            current = next;
+        }
+        
+        return current;
+    }
+
+    private async Task<string> FetchOpenApiSpecFromUrlAsync(string specUrl, DataSourceAuthentication? auth, CancellationToken cancellationToken)
     {
         try
         {
@@ -1089,9 +1161,10 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            // Use SchemaResolverService for consistent reference resolution and JSchema creation
+            // Use SchemaResolverService to resolve $ref references in the JSON and return the resolved JSON string
             // Pass authentication so nested schema references can also be authenticated
-            return await _schemaResolverService.CreateSchemaFromJsonAsync(content, specUrl, auth, cancellationToken);
+            var resolvedJson = await _schemaResolverService.ResolveAsync(content, specUrl, auth);
+            return resolvedJson ?? content;
         }
         catch (Exception ex)
         {
@@ -1166,7 +1239,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Analyzes the structure of the OpenAPI specification components
     /// </summary>
-    private OpenApiSchemaAnalysis AnalyzeSchemaStructure(JObject specObject)
+    private OpenApiSchemaAnalysis AnalyzeSchemaStructure(JsonObject specObject)
     {
         var analysis = new OpenApiSchemaAnalysis();
 
@@ -1176,7 +1249,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             if (specObject.ContainsKey("components"))
             {
                 var components = specObject["components"];
-                if (components is JObject componentsObject)
+                if (components is JsonObject componentsObject)
                 {
                     analysis.ComponentCount = 1;
 
@@ -1184,7 +1257,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     if (componentsObject.ContainsKey("schemas"))
                     {
                         var schemas = componentsObject["schemas"];
-                        if (schemas is JObject schemasObject)
+                        if (schemas is JsonObject schemasObject)
                         {
                             analysis.SchemaCount = schemasObject.Count;
                         }
@@ -1194,7 +1267,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     if (componentsObject.ContainsKey("responses"))
                     {
                         var responses = componentsObject["responses"];
-                        if (responses is JObject responsesObject)
+                        if (responses is JsonObject responsesObject)
                         {
                             analysis.ResponseCount = responsesObject.Count;
                         }
@@ -1204,7 +1277,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     if (componentsObject.ContainsKey("parameters"))
                     {
                         var parameters = componentsObject["parameters"];
-                        if (parameters is JObject parametersObject)
+                        if (parameters is JsonObject parametersObject)
                         {
                             analysis.ParameterCount = parametersObject.Count;
                         }
@@ -1214,7 +1287,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     if (componentsObject.ContainsKey("requestBodies"))
                     {
                         var requestBodies = componentsObject["requestBodies"];
-                        if (requestBodies is JObject requestBodiesObject)
+                        if (requestBodies is JsonObject requestBodiesObject)
                         {
                             analysis.RequestBodyCount = requestBodiesObject.Count;
                         }
@@ -1226,7 +1299,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             if (specObject.ContainsKey("definitions"))
             {
                 var definitions = specObject["definitions"];
-                if (definitions is JObject definitionsObject)
+                if (definitions is JsonObject definitionsObject)
                 {
                     analysis.SchemaCount = definitionsObject.Count;
                 }
@@ -1247,7 +1320,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Analyzes quality metrics of the OpenAPI specification
     /// </summary>
-    private OpenApiQualityMetrics AnalyzeQualityMetrics(JObject specObject)
+    private OpenApiQualityMetrics AnalyzeQualityMetrics(JsonObject specObject)
     {
         var metrics = new OpenApiQualityMetrics();
 
@@ -1256,7 +1329,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             if (specObject.ContainsKey("paths"))
             {
                 var paths = specObject["paths"];
-                if (paths is JObject pathsObject)
+                if (paths is JsonObject pathsObject)
                 {
                     int totalEndpoints = 0;
                     int endpointsWithDescription = 0;
@@ -1267,13 +1340,13 @@ public class OpenApiValidationService : IOpenApiValidationService
                     int totalResponseCodes = 0;
                     int responseCodesDocumented = 0;
 
-                    foreach (var path in pathsObject.Properties())
+                    foreach (var path in pathsObject)
                     {
-                        if (path.Value is JObject pathObject)
+                        if (path.Value is JsonObject pathObject)
                         {
-                            foreach (var method in pathObject.Properties())
+                            foreach (var method in pathObject)
                             {
-                                if (method.Value is JObject operationObject)
+                                if (method.Value is JsonObject operationObject)
                                 {
                                     totalEndpoints++;
 
@@ -1299,11 +1372,11 @@ public class OpenApiValidationService : IOpenApiValidationService
                                     if (operationObject.ContainsKey("parameters"))
                                     {
                                         var parameters = operationObject["parameters"];
-                                        if (parameters is JArray parametersArray)
+                                        if (parameters is JsonArray parametersArray)
                                         {
                                             totalParameters += parametersArray.Count;
                                             parametersWithDescription += parametersArray
-                                                .Where(p => p is JObject pObj &&
+                                                .Where(p => p is JsonObject pObj &&
                                                        pObj.ContainsKey("description") &&
                                                        !string.IsNullOrWhiteSpace(pObj["description"]?.ToString()))
                                                 .Count();
@@ -1314,11 +1387,11 @@ public class OpenApiValidationService : IOpenApiValidationService
                                     if (operationObject.ContainsKey("responses"))
                                     {
                                         var responses = operationObject["responses"];
-                                        if (responses is JObject responsesObject)
+                                        if (responses is JsonObject responsesObject)
                                         {
                                             totalResponseCodes += responsesObject.Count;
-                                            responseCodesDocumented += responsesObject.Properties()
-                                                .Where(r => r.Value is JObject rObj &&
+                                            responseCodesDocumented += responsesObject
+                                                .Where(r => r.Value is JsonObject rObj &&
                                                        rObj.ContainsKey("description") &&
                                                        !string.IsNullOrWhiteSpace(rObj["description"]?.ToString()))
                                                 .Count();
@@ -1359,13 +1432,13 @@ public class OpenApiValidationService : IOpenApiValidationService
         return metrics;
     }
 
-    private bool HasExamples(JObject operationObject)
+    private bool HasExamples(JsonObject operationObject)
     {
         // Check request body examples
         if (operationObject.ContainsKey("requestBody"))
         {
             var requestBody = operationObject["requestBody"];
-            if (requestBody is JObject requestBodyObject && HasContentExamples(requestBodyObject))
+            if (requestBody is JsonObject requestBodyObject && HasContentExamples(requestBodyObject))
             {
                 return true;
             }
@@ -1375,11 +1448,11 @@ public class OpenApiValidationService : IOpenApiValidationService
         if (operationObject.ContainsKey("responses"))
         {
             var responses = operationObject["responses"];
-            if (responses is JObject responsesObject)
+            if (responses is JsonObject responsesObject)
             {
-                foreach (var response in responsesObject.Properties())
+                foreach (var response in responsesObject)
                 {
-                    if (response.Value is JObject responseObject && HasContentExamples(responseObject))
+                    if (response.Value is JsonObject responseObject && HasContentExamples(responseObject))
                     {
                         return true;
                     }
@@ -1390,16 +1463,16 @@ public class OpenApiValidationService : IOpenApiValidationService
         return false;
     }
 
-    private bool HasContentExamples(JObject contentContainer)
+    private bool HasContentExamples(JsonObject contentContainer)
     {
         if (contentContainer.ContainsKey("content"))
         {
             var content = contentContainer["content"];
-            if (content is JObject contentObject)
+            if (content is JsonObject contentObject)
             {
-                foreach (var mediaType in contentObject.Properties())
+                foreach (var mediaType in contentObject)
                 {
-                    if (mediaType.Value is JObject mediaTypeObject)
+                    if (mediaType.Value is JsonObject mediaTypeObject)
                     {
                         if (mediaTypeObject.ContainsKey("example") || mediaTypeObject.ContainsKey("examples"))
                         {
@@ -1412,20 +1485,20 @@ public class OpenApiValidationService : IOpenApiValidationService
         return false;
     }
 
-    private void CountSchemaDescriptions(JObject specObject, OpenApiQualityMetrics metrics)
+    private void CountSchemaDescriptions(JsonObject specObject, OpenApiQualityMetrics metrics)
     {
         // Count schemas in components (OpenAPI 3.x)
         if (specObject.ContainsKey("components"))
         {
             var components = specObject["components"];
-            if (components is JObject componentsObject && componentsObject.ContainsKey("schemas"))
+            if (components is JsonObject componentsObject && componentsObject.ContainsKey("schemas"))
             {
                 var schemas = componentsObject["schemas"];
-                if (schemas is JObject schemasObject)
+                if (schemas is JsonObject schemasObject)
                 {
                     metrics.TotalSchemas = schemasObject.Count;
-                    metrics.SchemasWithDescription = schemasObject.Properties()
-                        .Where(s => s.Value is JObject sObj &&
+                    metrics.SchemasWithDescription = schemasObject
+                        .Where(s => s.Value is JsonObject sObj &&
                                sObj.ContainsKey("description") &&
                                !string.IsNullOrWhiteSpace(sObj["description"]?.ToString()))
                         .Count();
@@ -1437,11 +1510,11 @@ public class OpenApiValidationService : IOpenApiValidationService
         if (specObject.ContainsKey("definitions"))
         {
             var definitions = specObject["definitions"];
-            if (definitions is JObject definitionsObject)
+            if (definitions is JsonObject definitionsObject)
             {
                 metrics.TotalSchemas = definitionsObject.Count;
-                metrics.SchemasWithDescription = definitionsObject.Properties()
-                    .Where(d => d.Value is JObject dObj &&
+                metrics.SchemasWithDescription = definitionsObject
+                    .Where(d => d.Value is JsonObject dObj &&
                            dObj.ContainsKey("description") &&
                            !string.IsNullOrWhiteSpace(dObj["description"]?.ToString()))
                     .Count();
@@ -1492,7 +1565,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Generates recommendations based on analysis results
     /// </summary>
-    private List<OpenApiRecommendation> GenerateRecommendations(JObject specObject, List<ValidationError> errors)
+    private List<OpenApiRecommendation> GenerateRecommendations(JsonObject specObject, List<ValidationError> errors)
     {
         var recommendations = new List<OpenApiRecommendation>();
 
@@ -1557,16 +1630,16 @@ public class OpenApiValidationService : IOpenApiValidationService
     {
         public string Path { get; set; } = string.Empty;
         public string Method { get; set; } = string.Empty;
-        public JObject Operation { get; set; } = new();
-        public JObject PathItem { get; set; } = new();
+        public JsonObject Operation { get; set; } = new();
+        public JsonObject PathItem { get; set; } = new();
         public bool IsParameterized => Path.Contains('{');
         public string RootPath => GetRootPath(Path);
     }
 
-    private void AddQualityRecommendations(JObject specObject, List<OpenApiRecommendation> recommendations)
+    private void AddQualityRecommendations(JsonObject specObject, List<OpenApiRecommendation> recommendations)
     {
         // Check for missing info fields
-        if (!specObject.ContainsKey("info") || specObject["info"] is not JObject infoObject)
+        if (!specObject.ContainsKey("info") || specObject["info"] is not JsonObject infoObject)
         {
             return;
         }
@@ -1617,22 +1690,22 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Groups endpoints by root path and separates collection from parameterized endpoints
     /// </summary>
-    private List<EndpointGroup> GroupEndpointsByDependencies(JObject pathsObject, OpenApiValidationOptions options)
+    private List<EndpointGroup> GroupEndpointsByDependencies(JsonObject pathsObject, OpenApiValidationOptions options)
     {
         var endpoints = new List<EndpointInfo>();
         var validHttpMethods = new HashSet<string> { "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE" };
 
         // Extract all endpoints
-        foreach (var pathProperty in pathsObject.Properties())
+        foreach (var pathProperty in pathsObject)
         {
-            var path = pathProperty.Name;
+            var path = pathProperty.Key;
             var pathItem = pathProperty.Value;
 
-            if (pathItem is JObject pathItemObject)
+            if (pathItem is JsonObject pathItemObject)
             {
-                foreach (var methodProperty in pathItemObject.Properties())
+                foreach (var methodProperty in pathItemObject)
                 {
-                    var method = methodProperty.Name.ToUpperInvariant();
+                    var method = methodProperty.Key.ToUpperInvariant();
 
                     // Skip non-HTTP method properties like "parameters", "summary", "$ref", "servers", etc.
                     if (!validHttpMethods.Contains(method))
@@ -1641,7 +1714,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     }
 
                     var operation = methodProperty.Value;
-                    if (operation is JObject operationObject)
+                    if (operation is JsonObject operationObject)
                     {
                         endpoints.Add(new EndpointInfo
                         {
@@ -1706,10 +1779,10 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The endpoint test result with extracted IDs stored in the shared dictionary</returns>
     private async Task<EndpointTestResult> TestSingleEndpointWithIdExtractionAsync(
-        string path, string method, JObject operation, string baseUrl,
+        string path, string method, JsonObject operation, string baseUrl,
         OpenApiValidationOptions options, DataSourceAuthentication? authentication,
         ConcurrentDictionary<string, List<string>> extractedIds, SemaphoreSlim semaphore,
-        JObject openApiDocument, string? documentUri, JObject pathItem, CancellationToken cancellationToken)
+        JsonObject openApiDocument, string? documentUri, JsonObject pathItem, CancellationToken cancellationToken)
     {
         var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, documentUri, pathItem, cancellationToken);
 
@@ -1776,10 +1849,10 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The endpoint test result using extracted IDs for parameters</returns>
     private async Task<EndpointTestResult> TestSingleEndpointWithIdSubstitutionAsync(
-        string path, string method, JObject operation, string baseUrl,
+        string path, string method, JsonObject operation, string baseUrl,
         OpenApiValidationOptions options, DataSourceAuthentication? authentication,
         ConcurrentDictionary<string, List<string>> extractedIds, SemaphoreSlim semaphore,
-        JObject openApiDocument, string? documentUri, JObject pathItem, CancellationToken cancellationToken)
+        JsonObject openApiDocument, string? documentUri, JsonObject pathItem, CancellationToken cancellationToken)
     {
         var rootPath = GetRootPath(path);
 
@@ -1902,7 +1975,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Extracts IDs from a JSON response using OpenAPI schema information to identify ID field locations
     /// </summary>
-    private List<string> ExtractIdsFromResponse(string responseBody, string rootPath, JObject operation, JObject openApiDocument)
+    private List<string> ExtractIdsFromResponse(string responseBody, string rootPath, JsonObject operation, JsonObject openApiDocument)
     {
         var ids = new List<string>();
 
@@ -1921,26 +1994,29 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         try
         {
-            var json = JToken.Parse(responseBody);
-            _logger.LogDebug("Parsed JSON type: {JsonType}", json.Type);
+            var json = JsonNode.Parse(responseBody);
+            _logger.LogDebug("Parsed JSON type: {JsonType}", json?.GetType().Name ?? "null");
 
             // Handle array responses (most common for collections)
-            if (json is JArray array)
+            if (json is JsonArray array)
             {
                 _logger.LogInformation("Found JSON array with {Count} items, extracting all IDs", array.Count);
 
                 foreach (var item in array)
                 {
-                    var id = ExtractIdFromObject(item, schemaIdFields);
-                    if (!string.IsNullOrEmpty(id))
+                    if (item != null)
                     {
-                        _logger.LogDebug("Found ID in array item: {Id}", id);
-                        ids.Add(id);
+                        var id = ExtractIdFromObject(item, schemaIdFields);
+                        if (!string.IsNullOrEmpty(id))
+                        {
+                            _logger.LogDebug("Found ID in array item: {Id}", id);
+                            ids.Add(id);
+                        }
                     }
                 }
             }
             // Handle object responses with data/items property
-            else if (json is JObject obj)
+            else if (json is JsonObject obj)
             {
                 // First try to identify collection properties from the schema
                 var collectionProps = ExtractCollectionPropertiesFromSchema(operation, openApiDocument);
@@ -1950,14 +2026,17 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                     foreach (var propName in collectionProps)
                     {
-                        if (obj[propName] is JArray items)
+                        if (obj[propName] is JsonArray items)
                         {
                             _logger.LogDebug("Processing collection property '{PropName}' with {Count} items", propName, items.Count);
                             foreach (var item in items)
                             {
-                                var id = ExtractIdFromObject(item, schemaIdFields);
-                                if (!string.IsNullOrEmpty(id))
-                                    ids.Add(id);
+                                if (item != null)
+                                {
+                                    var id = ExtractIdFromObject(item, schemaIdFields);
+                                    if (!string.IsNullOrEmpty(id))
+                                        ids.Add(id);
+                                }
                             }
                             break;
                         }
@@ -1969,14 +2048,17 @@ public class OpenApiValidationService : IOpenApiValidationService
                 {
                     foreach (var propName in new[] { "data", "items", "results", "content", "contents" })
                     {
-                        if (obj[propName] is JArray items)
+                        if (obj[propName] is JsonArray items)
                         {
                             _logger.LogDebug("Processing fallback collection property '{PropName}' with {Count} items", propName, items.Count);
                             foreach (var item in items)
                             {
-                                var id = ExtractIdFromObject(item, schemaIdFields);
-                                if (!string.IsNullOrEmpty(id))
-                                    ids.Add(id);
+                                if (item != null)
+                                {
+                                    var id = ExtractIdFromObject(item, schemaIdFields);
+                                    if (!string.IsNullOrEmpty(id))
+                                        ids.Add(id);
+                                }
                             }
                             break;
                         }
@@ -2003,9 +2085,9 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Extracts an ID from a JSON object using OpenAPI schema-identified ID fields, with fallback to common names
     /// </summary>
-    private static string? ExtractIdFromObject(JToken item, List<string> schemaIdFields)
+    private static string? ExtractIdFromObject(JsonNode item, List<string> schemaIdFields)
     {
-        if (item is not JObject obj)
+        if (item is not JsonObject obj)
             return null;
 
         // First try fields identified from the OpenAPI schema
@@ -2030,7 +2112,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Extracts ID field names from the OpenAPI response schema
     /// </summary>
-    private List<string> ExtractIdFieldsFromSchema(JObject operation, JObject openApiDocument)
+    private List<string> ExtractIdFieldsFromSchema(JsonObject operation, JsonObject openApiDocument)
     {
         var idFields = new List<string>();
 
@@ -2054,7 +2136,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Extracts collection property names from the OpenAPI response schema
     /// </summary>
-    private List<string> ExtractCollectionPropertiesFromSchema(JObject operation, JObject openApiDocument)
+    private List<string> ExtractCollectionPropertiesFromSchema(JsonObject operation, JsonObject openApiDocument)
     {
         var collectionProps = new List<string>();
 
@@ -2078,16 +2160,16 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Recursively extracts ID field names from a schema structure
     /// </summary>
-    private static void ExtractIdFieldsFromSchemaRecursive(JToken schema, List<string> idFields)
+    private static void ExtractIdFieldsFromSchemaRecursive(JsonNode schema, List<string> idFields)
     {
-        if (schema is JObject schemaObj)
+        if (schema is JsonObject schemaObj)
         {
             // Check if this schema has properties
-            if (schemaObj["properties"] is JObject properties)
+            if (schemaObj["properties"] is JsonObject properties)
             {
-                foreach (var prop in properties.Properties())
+                foreach (var prop in properties)
                 {
-                    var propName = prop.Name;
+                    var propName = prop.Key;
                     var propSchema = prop.Value;
 
                     // Check if this looks like an ID field
@@ -2097,12 +2179,15 @@ public class OpenApiValidationService : IOpenApiValidationService
                     }
 
                     // Recursively check nested properties
-                    ExtractIdFieldsFromSchemaRecursive(propSchema, idFields);
+                    if (propSchema != null)
+                    {
+                        ExtractIdFieldsFromSchemaRecursive(propSchema, idFields);
+                    }
                 }
             }
 
             // Check array items
-            if (schemaObj["items"] is JToken itemsSchema)
+            if (schemaObj["items"] is JsonNode itemsSchema)
             {
                 ExtractIdFieldsFromSchemaRecursive(itemsSchema, idFields);
             }
@@ -2110,11 +2195,14 @@ public class OpenApiValidationService : IOpenApiValidationService
             // Check allOf, anyOf, oneOf
             foreach (var combiner in new[] { "allOf", "anyOf", "oneOf" })
             {
-                if (schemaObj[combiner] is JArray combinerArray)
+                if (schemaObj[combiner] is JsonArray combinerArray)
                 {
                     foreach (var item in combinerArray)
                     {
-                        ExtractIdFieldsFromSchemaRecursive(item, idFields);
+                        if (item != null)
+                        {
+                            ExtractIdFieldsFromSchemaRecursive(item, idFields);
+                        }
                     }
                 }
             }
@@ -2124,37 +2212,43 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Recursively extracts collection property names from a schema structure
     /// </summary>
-    private static void ExtractCollectionPropertiesFromSchemaRecursive(JToken schema, List<string> collectionProps)
+    private static void ExtractCollectionPropertiesFromSchemaRecursive(JsonNode schema, List<string> collectionProps)
     {
-        if (schema is JObject schemaObj)
+        if (schema is JsonObject schemaObj)
         {
             // Check if this schema has properties
-            if (schemaObj["properties"] is JObject properties)
+            if (schemaObj["properties"] is JsonObject properties)
             {
-                foreach (var prop in properties.Properties())
+                foreach (var prop in properties)
                 {
-                    var propName = prop.Name;
+                    var propName = prop.Key;
                     var propSchema = prop.Value;
 
                     // Check if this property is an array (collection)
-                    if (propSchema is JObject propObj && propObj["type"]?.ToString() == "array")
+                    if (propSchema is JsonObject propObj && propObj["type"]?.ToString() == "array")
                     {
                         collectionProps.Add(propName);
                     }
 
                     // Recursively check nested properties
-                    ExtractCollectionPropertiesFromSchemaRecursive(propSchema, collectionProps);
+                    if (propSchema != null)
+                    {
+                        ExtractCollectionPropertiesFromSchemaRecursive(propSchema, collectionProps);
+                    }
                 }
             }
 
             // Check allOf, anyOf, oneOf
             foreach (var combiner in new[] { "allOf", "anyOf", "oneOf" })
             {
-                if (schemaObj[combiner] is JArray combinerArray)
+                if (schemaObj[combiner] is JsonArray combinerArray)
                 {
                     foreach (var item in combinerArray)
                     {
-                        ExtractCollectionPropertiesFromSchemaRecursive(item, collectionProps);
+                        if (item != null)
+                        {
+                            ExtractCollectionPropertiesFromSchemaRecursive(item, collectionProps);
+                        }
                     }
                 }
             }
@@ -2164,7 +2258,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Determines if a property name and schema indicate an ID field
     /// </summary>
-    private static bool IsIdField(string propName, JToken? propSchema)
+    private static bool IsIdField(string propName, JsonNode? propSchema)
     {
         // Check property name patterns
         var nameLower = propName.ToLowerInvariant();
@@ -2176,7 +2270,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         // Check schema properties for ID indicators
-        if (propSchema is JObject schemaObj)
+        if (propSchema is JsonObject schemaObj)
         {
             var description = schemaObj["description"]?.ToString().ToLowerInvariant();
             if (!string.IsNullOrEmpty(description) &&
@@ -2199,18 +2293,18 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// Helper method to extract a schema from a given path in the OpenAPI document
     /// This is used by parameter resolution to resolve parameter references
     /// </summary>
-    private static JToken? GetSchemaFromPath(JObject document, string path)
+    private static JsonNode? GetSchemaFromPath(JsonObject document, string path)
     {
         var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        JToken? current = document;
+        JsonNode? current = document;
 
         foreach (var part in parts)
         {
-            if (current is JObject obj && obj.ContainsKey(part))
+            if (current is JsonObject obj && obj.ContainsKey(part))
             {
                 current = obj[part];
             }
-            else if (current is JArray array && int.TryParse(part, out var index) && index >= 0 && index < array.Count)
+            else if (current is JsonArray array && int.TryParse(part, out var index) && index >= 0 && index < array.Count)
             {
                 current = array[index];
             }

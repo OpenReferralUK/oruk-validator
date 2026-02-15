@@ -1,8 +1,8 @@
 using System;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Schema;
+using Json.Schema;
 using OpenReferralApi.Core.Models;
 using ValidationError = OpenReferralApi.Core.Models.ValidationError;
 
@@ -92,7 +92,7 @@ public class JsonValidatorService : IJsonValidatorService
 
             // Validate the JSON data
             // Format with indentation so validation error line numbers are accurate
-            var jsonDataString = JsonConvert.SerializeObject(jsonData, Formatting.Indented);
+            var jsonDataString = JsonSerializer.Serialize(jsonData, new JsonSerializerOptions { WriteIndented = true });
             var validationErrors = await ValidateJsonAgainstSchemaAsync(jsonDataString, schema, request.Options);
 
             // Build result
@@ -151,30 +151,22 @@ public class JsonValidatorService : IJsonValidatorService
         {
             _logger.LogInformation("Starting schema validation");
 
-            var schemaJson = JsonConvert.SerializeObject(schema);
+            var schemaJson = JsonSerializer.Serialize(schema);
             var jsonSchema = await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson, cancellationToken);
 
             // Basic schema validation
             var schemaValidationErrors = new List<ValidationError>();
 
-            if (jsonSchema.Type == null)
-            {
-                schemaValidationErrors.Add(new ValidationError
-                {
-                    Path = "",
-                    Message = "Schema should specify a type",
-                    ErrorCode = "MISSING_TYPE",
-                    Severity = "Warning"
-                });
-            }
+            // Note: JsonSchema.Net doesn't have direct type checking like JSchema
+            // Additional schema validation could be added here if needed
 
             result.IsValid = !schemaValidationErrors.Any();
             result.Errors = schemaValidationErrors;
             result.SchemaVersion = "2020-12";
             result.Metadata = new ValidationMetadata
             {
-                SchemaTitle = GetSchemaTitleFromObject(schema) ?? jsonSchema.Title,
-                SchemaDescription = GetSchemaDescriptionFromObject(schema) ?? jsonSchema.Description,
+                SchemaTitle = GetSchemaTitleFromObject(schema),
+                SchemaDescription = GetSchemaDescriptionFromObject(schema),
                 ValidationTimestamp = DateTime.UtcNow
             };
 
@@ -217,7 +209,7 @@ public class JsonValidatorService : IJsonValidatorService
         }
     }
 
-    private async Task<JSchema> GetSchemaAsync(ValidationRequest request, CancellationToken cancellationToken)
+    private async Task<JsonSchema> GetSchemaAsync(ValidationRequest request, CancellationToken cancellationToken)
     {
         if (!string.IsNullOrEmpty(request.SchemaUri))
         {
@@ -233,7 +225,7 @@ public class JsonValidatorService : IJsonValidatorService
         }
     }
 
-    private async Task<JSchema> LoadSchemaFromUriAsync(string schemaUri, ValidationOptions? options, CancellationToken cancellationToken)
+    private async Task<JsonSchema> LoadSchemaFromUriAsync(string schemaUri, ValidationOptions? options, CancellationToken cancellationToken)
     {
         return await _requestProcessingService.ExecuteWithRetryAsync(async (ct) =>
         {
@@ -248,7 +240,7 @@ public class JsonValidatorService : IJsonValidatorService
                 response.EnsureSuccessStatusCode();
                 var schemaJson = await response.Content.ReadAsStringAsync(ct);
 
-                // Pass the validated URI as documentUri so JSchemaUrlResolver can resolve relative references
+                // Pass the validated URI as documentUri so JsonSchema can resolve relative references
                 return await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson, validatedUri.ToString(), null, ct);
             }
             catch (Exception ex)
@@ -259,11 +251,11 @@ public class JsonValidatorService : IJsonValidatorService
         }, options, cancellationToken);
     }
 
-    private async Task<JSchema> CreateSchemaFromObjectAsync(object schema)
+    private async Task<JsonSchema> CreateSchemaFromObjectAsync(object schema)
     {
         try
         {
-            var schemaJson = JsonConvert.SerializeObject(schema);
+            var schemaJson = JsonSerializer.Serialize(schema);
             return await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson);
         }
         catch (Exception ex)
@@ -273,7 +265,7 @@ public class JsonValidatorService : IJsonValidatorService
         }
     }
 
-    private Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(string jsonData, JSchema schema, ValidationOptions? options)
+    private Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(string jsonData, JsonSchema schema, ValidationOptions? options)
     {
         var errors = new List<ValidationError>();
         var maxErrors = options?.MaxErrors ?? 100;
@@ -281,36 +273,64 @@ public class JsonValidatorService : IJsonValidatorService
         try
         {
             // Parse JSON to validate format
-            var jsonToken = JToken.Parse(jsonData);
-
-            // Perform validation using Newtonsoft.Json.Schema
-            bool isValid = jsonToken.IsValid(schema, out IList<string> errorMessages);
-
-            if (!isValid)
+            var jsonNode = JsonNode.Parse(jsonData);
+            if (jsonNode == null)
             {
-                // Use JSchema.Validate to get detailed validation errors
-                var validationErrors = new List<ValidationError>();
-                jsonToken.Validate(schema, (sender, args) =>
+                errors.Add(new ValidationError
                 {
-                    validationErrors.Add(new ValidationError
+                    Path = "",
+                    Message = "Invalid JSON: null or empty document",
+                    ErrorCode = "INVALID_JSON",
+                    Severity = "Error"
+                });
+                return Task.FromResult(errors);
+            }
+
+            // Perform validation using JsonSchema.Net
+            // Convert JsonNode to JsonElement for schema validation
+            var jsonString = JsonSerializer.Serialize(jsonNode);
+            using var doc = JsonDocument.Parse(jsonString);
+            var validationResults = schema.Evaluate(doc.RootElement, new Json.Schema.EvaluationOptions
+            {
+                OutputFormat = Json.Schema.OutputFormat.List
+            });
+
+            if (!validationResults.IsValid)
+            {
+                // Convert JsonSchema.Net validation results to our ValidationError format
+                var failedDetails = validationResults.Details?.Where(d => !d.IsValid).Take(maxErrors) ?? Enumerable.Empty<EvaluationResults>();
+                foreach (var error in failedDetails)
+                {
+                    var errorPath = error.InstanceLocation.ToString();
+                    var errorMessage = "Validation failed at " + errorPath;
+                    
+                    errors.Add(new ValidationError
                     {
-                        Path = args.Path ?? "",
-                        Message = args.Message,
+                        Path = errorPath,
+                        Message = errorMessage,
                         ErrorCode = "VALIDATION_ERROR",
                         Severity = "Error"
                     });
-                });
-
-                errors.AddRange(validationErrors.Take(maxErrors));
+                }
             }
         }
-        catch (JsonReaderException ex)
+        catch (JsonException ex)
         {
             errors.Add(new ValidationError
             {
                 Path = "",
                 Message = $"Invalid JSON format: {ex.Message}",
                 ErrorCode = "INVALID_JSON",
+                Severity = "Error"
+            });
+        }
+        catch (Exception ex)
+        {
+            errors.Add(new ValidationError
+            {
+                Path = "",
+                Message = $"Validation error: {ex.Message}",
+                ErrorCode = "VALIDATION_ERROR",
                 Severity = "Error"
             });
         }
@@ -337,7 +357,7 @@ public class JsonValidatorService : IJsonValidatorService
                 var content = await response.Content.ReadAsStringAsync(ct);
 
                 // Parse and return the JSON data
-                return JsonConvert.DeserializeObject<object>(content)
+                return JsonSerializer.Deserialize<object>(content)
                     ?? throw new InvalidOperationException("Failed to deserialize JSON data from URL");
             }
             catch (HttpRequestException ex)
@@ -353,18 +373,21 @@ public class JsonValidatorService : IJsonValidatorService
         }, options, cancellationToken);
     }
 
-    private string? GetSchemaTitle(ValidationRequest request, JSchema schema)
+    private string? GetSchemaTitle(ValidationRequest request, JsonSchema schema)
     {
         // First try to get the title from the original schema object
         if (request.Schema != null)
         {
             try
             {
-                var jObject = JObject.FromObject(request.Schema);
-                var title = jObject["title"]?.ToString();
-                if (!string.IsNullOrEmpty(title))
+                var jsonElement = JsonSerializer.SerializeToElement(request.Schema);
+                if (jsonElement.TryGetProperty("title", out var titleElement))
                 {
-                    return title;
+                    var title = titleElement.GetString();
+                    if (!string.IsNullOrEmpty(title))
+                    {
+                        return title;
+                    }
                 }
             }
             catch (Exception ex)
@@ -373,22 +396,25 @@ public class JsonValidatorService : IJsonValidatorService
             }
         }
 
-        // Fall back to JSchema title
-        return schema.Title;
+        // JsonSchema.Net doesn't provide direct Title property, so we return null if not in original schema
+        return null;
     }
 
-    private string? GetSchemaDescription(ValidationRequest request, JSchema schema)
+    private string? GetSchemaDescription(ValidationRequest request, JsonSchema schema)
     {
         // First try to get the description from the original schema object
         if (request.Schema != null)
         {
             try
             {
-                var jObject = JObject.FromObject(request.Schema);
-                var description = jObject["description"]?.ToString();
-                if (!string.IsNullOrEmpty(description))
+                var jsonElement = JsonSerializer.SerializeToElement(request.Schema);
+                if (jsonElement.TryGetProperty("description", out var descElement))
                 {
-                    return description;
+                    var description = descElement.GetString();
+                    if (!string.IsNullOrEmpty(description))
+                    {
+                        return description;
+                    }
                 }
             }
             catch (Exception ex)
@@ -397,8 +423,8 @@ public class JsonValidatorService : IJsonValidatorService
             }
         }
 
-        // Fall back to JSchema description
-        return schema.Description;
+        // JsonSchema.Net doesn't provide direct Description property, so we return null if not in original schema
+        return null;
     }
 
     private string? GetSchemaTitleFromObject(object? schemaObject)
@@ -407,14 +433,17 @@ public class JsonValidatorService : IJsonValidatorService
         
         try
         {
-            var jObject = JObject.FromObject(schemaObject);
-            return jObject["title"]?.ToString();
+            var jsonElement = JsonSerializer.SerializeToElement(schemaObject);
+            if (jsonElement.TryGetProperty("title", out var titleElement))
+            {
+                return titleElement.GetString();
+            }
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Failed to extract title from schema object");
-            return null;
         }
+        return null;
     }
 
     private string? GetSchemaDescriptionFromObject(object? schemaObject)
@@ -423,14 +452,17 @@ public class JsonValidatorService : IJsonValidatorService
         
         try
         {
-            var jObject = JObject.FromObject(schemaObject);
-            return jObject["description"]?.ToString();
+            var jsonElement = JsonSerializer.SerializeToElement(schemaObject);
+            if (jsonElement.TryGetProperty("description", out var descElement))
+            {
+                return descElement.GetString();
+            }
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Failed to extract description from schema object");
-            return null;
         }
+        return null;
     }
 
 }

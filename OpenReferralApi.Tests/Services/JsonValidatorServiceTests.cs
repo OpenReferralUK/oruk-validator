@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
-using Newtonsoft.Json.Schema;
+using Json.Schema;
 using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 
@@ -33,10 +33,10 @@ public class JsonValidatorServiceTests
 
         _requestProcessingServiceMock
             .Setup(service => service.ExecuteWithRetryAsync(
-                It.IsAny<Func<CancellationToken, Task<JSchema>>>(),
+                It.IsAny<Func<CancellationToken, Task<JsonSchema>>>(),
                 It.IsAny<ValidationOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<JSchema>> func, ValidationOptions? options, CancellationToken ct) => func(ct));
+            .Returns((Func<CancellationToken, Task<JsonSchema>> func, ValidationOptions? options, CancellationToken ct) => func(ct));
 
         _requestProcessingServiceMock
             .Setup(service => service.ExecuteWithRetryAsync(
@@ -51,11 +51,11 @@ public class JsonValidatorServiceTests
 
         _schemaResolverServiceMock
             .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string schemaJson, string documentUri, DataSourceAuthentication auth, CancellationToken ct) => JSchema.Parse(schemaJson));
+            .ReturnsAsync((string schemaJson, string documentUri, DataSourceAuthentication auth, CancellationToken ct) => JsonSchema.FromText(schemaJson));
 
         _schemaResolverServiceMock
             .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string schemaJson, CancellationToken ct) => JSchema.Parse(schemaJson));
+            .ReturnsAsync((string schemaJson, CancellationToken ct) => JsonSchema.FromText(schemaJson));
 
         var mockHandler = new MockHttpMessageHandler("{}", "{}");
         _httpClient = new HttpClient(mockHandler);

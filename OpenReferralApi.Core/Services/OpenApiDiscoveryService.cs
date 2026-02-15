@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using OpenReferralApi.Core.Models;
 
 namespace OpenReferralApi.Core.Services;
@@ -49,11 +49,16 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             var content = await resp.Content.ReadAsStringAsync(cancellationToken);
             try
             {
-                var j = JObject.Parse(content);
+                var j = JsonNode.Parse(content);
+                if (j == null)
+                {
+                    _logger.LogInformation("Failed to parse JSON from BaseUrl response; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", defaultSpec);
+                    return (defaultSpec, "Defaulted to HSDS-UK 1.0 (failed to parse base URL response)");
+                }
 
                 // Check for version field and construct URL
-                var versionToken = j.SelectToken("version");
-                var version = versionToken?.ToString();
+                var versionNode = j["version"];
+                var version = versionNode?.GetValue<string>();
                 if (!string.IsNullOrEmpty(version))
                 {
                     var extractedVersion = ExtractVersionNumber(version);
@@ -66,8 +71,10 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
                 }
 
                 // Check for explicit openapi_url field first
-                var openapiUrlToken = j.SelectToken("openapi_url") ?? j.SelectToken("openapiUrl") ?? j.SelectToken("open_api_url");
-                var openapiUrl = openapiUrlToken?.ToString();
+                var openapiUrl = j["openapi_url"]?.GetValue<string>()
+                    ?? j["openapiUrl"]?.GetValue<string>()
+                    ?? j["open_api_url"]?.GetValue<string>();
+                
                 if (!string.IsNullOrEmpty(openapiUrl))
                 {
                     _logger.LogInformation("Discovered openapi_url: {OpenApiUrl}", openapiUrl);

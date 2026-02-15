@@ -1,4 +1,5 @@
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Serialization;
+using System.Text.Json;
 using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 
@@ -46,9 +47,9 @@ public class OpenApiToValidationResponseMapperTests
 
         // Assert
         Assert.That(response, Is.Not.Null);
-        var json = JObject.FromObject(response);
-        Assert.That(json["service"], Is.Not.Null);
-        Assert.That(json["testSuites"], Is.Not.Null);
+        var json = JsonSerializer.SerializeToNode(response);
+        Assert.That(json?["service"], Is.Not.Null);
+        Assert.That(json?["testSuites"], Is.Not.Null);
     }
 
     [Test]
@@ -80,10 +81,10 @@ public class OpenApiToValidationResponseMapperTests
         var response = _mapper.MapToValidationResponse(result);
 
         // Assert
-        var json = JObject.FromObject(response);
-        var testSuites = json["testSuites"] as JArray;
+        var json = JsonSerializer.SerializeToNode(response);
+        var testSuites = json?["testSuites"];
         Assert.That(testSuites, Is.Not.Null);
-        Assert.That(testSuites, Is.Empty);
+        Assert.That(testSuites?.AsArray(), Is.Empty);
     }
 
     [Test]
@@ -110,7 +111,7 @@ public class OpenApiToValidationResponseMapperTests
 
         // Assert
         Assert.That(response, Is.Not.Null);
-        var json = JObject.FromObject(response);
-        Assert.That(json["service"]!["url"]!.ToString(), Is.EqualTo(""));
+        var json = JsonSerializer.SerializeToNode(response);
+        Assert.That(json?["service"]?["url"]?.GetValue<string>(), Is.EqualTo(""));
     }
 }
