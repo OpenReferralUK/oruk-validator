@@ -76,6 +76,7 @@ public class SchemaResolverService : ISchemaResolverService
   private readonly ILogger<SchemaResolverService> _logger;
   private readonly IMemoryCache _memoryCache;
   private readonly CacheOptions _cacheOptions;
+  private readonly IJsonSerializationOptionsProvider _jsonSerializationOptionsProvider;
   private JsonNode? _rootDocument;
   private string? _baseUri;
   private DataSourceAuthentication? _auth;
@@ -87,16 +88,19 @@ public class SchemaResolverService : ISchemaResolverService
   /// <param name="logger">Logger instance.</param>
   /// <param name="memoryCache">Memory cache for persistent schema caching.</param>
   /// <param name="cacheOptions">Cache configuration options.</param>
+  /// <param name="jsonSerializationOptionsProvider">Provider for shared JsonSerializerOptions.</param>
   public SchemaResolverService(
     HttpClient httpClient,
     ILogger<SchemaResolverService> logger,
     IMemoryCache memoryCache,
-    IOptions<CacheOptions> cacheOptions)
+    IOptions<CacheOptions> cacheOptions,
+    IJsonSerializationOptionsProvider jsonSerializationOptionsProvider)
   {
     _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
     _cacheOptions = cacheOptions?.Value ?? throw new ArgumentNullException(nameof(cacheOptions));
+    _jsonSerializationOptionsProvider = jsonSerializationOptionsProvider ?? throw new ArgumentNullException(nameof(jsonSerializationOptionsProvider));
   }
 
   /// <summary>
@@ -115,7 +119,7 @@ public class SchemaResolverService : ISchemaResolverService
     }
 
     var resolved = await ResolveAsync(jsonNode, baseUri, auth);
-    return resolved?.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) ?? "null";
+    return resolved?.ToJsonString(_jsonSerializationOptionsProvider.PrettyPrintOptions) ?? "null";
   }
 
   /// <summary>

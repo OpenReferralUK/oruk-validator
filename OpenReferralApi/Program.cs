@@ -160,6 +160,7 @@ healthChecksBuilder.AddCheck<FeedValidationHealthCheck>(
     tags: new[] { "ready", "service" });
 
 // Services
+builder.Services.AddSingleton<IJsonSerializationOptionsProvider, JsonSerializationOptionsProvider>();
 builder.Services.AddScoped<IPathParsingService, PathParsingService>();
 builder.Services.AddSingleton<IRequestProcessingService, RequestProcessingService>();
 

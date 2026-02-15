@@ -14,6 +14,7 @@ public class SchemaResolverServiceTests
 {
   private Mock<ILogger<SchemaResolverService>> _loggerMock;
   private Mock<HttpClient> _httpClientMock;
+  private Mock<IJsonSerializationOptionsProvider> _jsonSerializationOptionsProviderMock;
   private IMemoryCache _memoryCache;
   private IOptions<CacheOptions> _cacheOptions;
   private SchemaResolverService _service;
@@ -23,6 +24,12 @@ public class SchemaResolverServiceTests
   {
     _loggerMock = new Mock<ILogger<SchemaResolverService>>();
     _httpClientMock = new Mock<HttpClient>();
+    _jsonSerializationOptionsProviderMock = new Mock<IJsonSerializationOptionsProvider>();
+    
+    // Setup JsonSerializationOptionsProvider mock
+    _jsonSerializationOptionsProviderMock
+        .Setup(provider => provider.PrettyPrintOptions)
+        .Returns(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
     
     // Create real MemoryCache for testing
     _memoryCache = new MemoryCache(new MemoryCacheOptions
@@ -38,7 +45,7 @@ public class SchemaResolverServiceTests
       MaxSizeMB = 100
     });
     
-    _service = new SchemaResolverService(_httpClientMock.Object, _loggerMock.Object, _memoryCache, _cacheOptions);
+    _service = new SchemaResolverService(_httpClientMock.Object, _loggerMock.Object, _memoryCache, _cacheOptions, _jsonSerializationOptionsProviderMock.Object);
   }
 
   [TearDown]
@@ -236,7 +243,11 @@ public class SchemaResolverServiceTests
     });
 
     var httpClient = new HttpClient(handler);
-    var service = new SchemaResolverService(httpClient, _loggerMock.Object, memoryCache, cacheOptions);
+    var providerMock = new Mock<IJsonSerializationOptionsProvider>();
+    providerMock
+        .Setup(provider => provider.PrettyPrintOptions)
+        .Returns(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    var service = new SchemaResolverService(httpClient, _loggerMock.Object, memoryCache, cacheOptions, providerMock.Object);
 
     // Create a simple schema with external ref
     var mainSchemaJson = @"{
@@ -293,7 +304,11 @@ public class SchemaResolverServiceTests
     });
 
     var httpClient = new HttpClient(handler);
-    var service = new SchemaResolverService(httpClient, _loggerMock.Object, memoryCache, cacheOptions);
+    var providerMock = new Mock<IJsonSerializationOptionsProvider>();
+    providerMock
+        .Setup(provider => provider.PrettyPrintOptions)
+        .Returns(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    var service = new SchemaResolverService(httpClient, _loggerMock.Object, memoryCache, cacheOptions, providerMock.Object);
 
     // Create a simple schema with external ref
     var mainSchemaJson = @"{

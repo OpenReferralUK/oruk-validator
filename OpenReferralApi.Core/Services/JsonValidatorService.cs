@@ -23,19 +23,22 @@ public class JsonValidatorService : IJsonValidatorService
     private readonly IPathParsingService _pathParsingService;
     private readonly IRequestProcessingService _requestProcessingService;
     private readonly ISchemaResolverService _schemaResolverService;
+    private readonly IJsonSerializationOptionsProvider _jsonSerializationOptionsProvider;
 
     public JsonValidatorService(
         ILogger<JsonValidatorService> logger,
         HttpClient httpClient,
         IPathParsingService pathParsingService,
         IRequestProcessingService requestProcessingService,
-        ISchemaResolverService schemaResolverService)
+        ISchemaResolverService schemaResolverService,
+        IJsonSerializationOptionsProvider jsonSerializationOptionsProvider)
     {
         _logger = logger;
         _httpClient = httpClient;
         _pathParsingService = pathParsingService;
         _requestProcessingService = requestProcessingService;
         _schemaResolverService = schemaResolverService;
+        _jsonSerializationOptionsProvider = jsonSerializationOptionsProvider;
     }
 
     public async Task<ValidationResult> ValidateAsync(ValidationRequest request, CancellationToken cancellationToken = default)
@@ -92,7 +95,7 @@ public class JsonValidatorService : IJsonValidatorService
 
             // Validate the JSON data
             // Format with indentation so validation error line numbers are accurate
-            var jsonDataString = JsonSerializer.Serialize(jsonData, new JsonSerializerOptions { WriteIndented = true });
+            var jsonDataString = JsonSerializer.Serialize(jsonData, _jsonSerializationOptionsProvider.PrettyPrintOptions);
             var validationErrors = await ValidateJsonAgainstSchemaAsync(jsonDataString, schema, request.Options);
 
             // Build result

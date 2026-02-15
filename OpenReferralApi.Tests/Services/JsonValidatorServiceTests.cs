@@ -13,6 +13,7 @@ public class JsonValidatorServiceTests
     private Mock<IPathParsingService> _pathParsingServiceMock;
     private Mock<IRequestProcessingService> _requestProcessingServiceMock;
     private Mock<ISchemaResolverService> _schemaResolverServiceMock;
+    private Mock<IJsonSerializationOptionsProvider> _jsonSerializationOptionsProviderMock;
     private HttpClient _httpClient;
     private JsonValidatorService _service;
 
@@ -23,6 +24,7 @@ public class JsonValidatorServiceTests
         _pathParsingServiceMock = new Mock<IPathParsingService>();
         _requestProcessingServiceMock = new Mock<IRequestProcessingService>();
         _schemaResolverServiceMock = new Mock<ISchemaResolverService>();
+        _jsonSerializationOptionsProviderMock = new Mock<IJsonSerializationOptionsProvider>();
 
         _requestProcessingServiceMock
             .Setup(service => service.ExecuteWithConcurrencyControlAsync(
@@ -57,6 +59,11 @@ public class JsonValidatorServiceTests
             .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string schemaJson, CancellationToken ct) => JsonSchema.FromText(schemaJson));
 
+        // Setup JsonSerializationOptionsProvider mock
+        _jsonSerializationOptionsProviderMock
+            .Setup(provider => provider.PrettyPrintOptions)
+            .Returns(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
         var mockHandler = new MockHttpMessageHandler("{}", "{}");
         _httpClient = new HttpClient(mockHandler);
 
@@ -65,7 +72,8 @@ public class JsonValidatorServiceTests
             _httpClient,
             _pathParsingServiceMock.Object,
             _requestProcessingServiceMock.Object,
-            _schemaResolverServiceMock.Object);
+            _schemaResolverServiceMock.Object,
+            _jsonSerializationOptionsProviderMock.Object);
     }
 
     [TearDown]
@@ -290,7 +298,8 @@ public class JsonValidatorServiceTests
             _httpClient,
             _pathParsingServiceMock.Object,
             _requestProcessingServiceMock.Object,
-            _schemaResolverServiceMock.Object);
+            _schemaResolverServiceMock.Object,
+            _jsonSerializationOptionsProviderMock.Object);
     }
 
     private sealed class MockHttpMessageHandler : HttpMessageHandler
