@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fail if PR is not from staging
-        if: github.head_ref != 'staging'
+        if: github.head_ref != 'staging' && github.actor != 'dependabot[bot]'
         run: |
           echo "Error: Merges into 'main' are only allowed from the 'staging' branch."
           echo "Current source branch: ${{ github.head_ref }}"
