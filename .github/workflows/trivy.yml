@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v6.0.2
 
       - name: Run Trivy vulnerability scanner (Config & Dependency)
-        uses: aquasecurity/trivy-action@0.33.1 # Use the latest version
+        uses: aquasecurity/trivy-action@0.34.0 # Use the latest version
         with:
           scan-type: 'fs' # Scans the file system
           scan-ref: '.'
@@ -29,7 +29,7 @@ jobs:
           # Trivy will ignore these checks if you have a .trivyignore file
 
       - name: Upload Trivy scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4.32.2
+        uses: github/codeql-action/upload-sarif@v4.32.3
         if: always() # Upload results even if vulnerabilities are found
         with:
           sarif_file: 'trivy-results.sarif'
