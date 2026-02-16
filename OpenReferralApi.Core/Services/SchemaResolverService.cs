@@ -661,7 +661,7 @@ public class SchemaResolverService : ISchemaResolverService
       // Set base URI for any remaining reference resolution if provided
       if (!string.IsNullOrEmpty(documentUri))
       {
-        _logger.LogDebug("Loading schema with base URI: {DocumentUri}", documentUri);
+        _logger.LogDebug("Loading schema with base URI: {DocumentUri}", SanitizeUrlForLogging(documentUri));
         settings.BaseUri = new Uri(documentUri);
       }
 
@@ -673,7 +673,7 @@ public class SchemaResolverService : ISchemaResolverService
     }
     catch (Exception ex)
     {
-      _logger.LogError(ex, "Failed to create JSON schema from JSON with resolver. DocumentUri: {DocumentUri}", documentUri ?? "none");
+      _logger.LogError(ex, "Failed to create JSON schema from JSON with resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
       throw;
     }
   }
