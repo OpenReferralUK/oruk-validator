@@ -20,6 +20,7 @@ jobs:
         run: |
           echo "Error: Merges into 'main' are only allowed from the 'staging' branch."
           echo "Current source branch: ${{ github.head_ref }}"
+          echo "Current actor: ${{ github.actor }}"
           exit 1
 
       - name: Success status (from staging)
