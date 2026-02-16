@@ -66,5 +66,4 @@ results*.json
 
 # AI-generated documentation
 docs/
-OpenReferralApi/logs/oruk-20260215.log
-OpenReferralApi/logs/oruk-20260216.log
+logs/
