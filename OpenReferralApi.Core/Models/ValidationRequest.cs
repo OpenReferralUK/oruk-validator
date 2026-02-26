@@ -67,5 +67,8 @@ public class ValidationOptions
 
     [JsonProperty("validateSslCertificate")]
     public bool ValidateSslCertificate { get; set; } = true;
+    [JsonProperty("reportAdditionalFields")]
+    public bool ReportAdditionalFields { get; set; } = false;
+
 }
 

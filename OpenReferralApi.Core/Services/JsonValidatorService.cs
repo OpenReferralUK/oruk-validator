@@ -95,8 +95,15 @@ public class JsonValidatorService : IJsonValidatorService
             var jsonDataString = JsonConvert.SerializeObject(jsonData, Formatting.Indented);
             var validationErrors = await ValidateJsonAgainstSchemaAsync(jsonDataString, schema, request.Options);
 
-            // Build result
-            result.IsValid = !validationErrors.Any();
+            // Report additional fields if requested
+            if (request.Options?.ReportAdditionalFields == true)
+            {
+                var additionalFieldWarnings = DetectAdditionalFields(jsonDataString, schema);
+                validationErrors.AddRange(additionalFieldWarnings);
+            }
+
+            // Build result - only count Error severity as validation failures
+            result.IsValid = !validationErrors.Any(e => e.Severity == "Error");
             result.Errors = validationErrors;
             result.SchemaVersion = "2020-12";
             result.Metadata = new ValidationMetadata
@@ -430,6 +437,84 @@ public class JsonValidatorService : IJsonValidatorService
         {
             _logger.LogDebug(ex, "Failed to extract description from schema object");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Detects fields in the JSON data that are not defined in the schema.
+    /// Returns a list of validation warnings for each additional field found.
+    /// </summary>
+    private List<ValidationError> DetectAdditionalFields(string jsonData, JSchema schema)
+    {
+        var warnings = new List<ValidationError>();
+
+        try
+        {
+            var jsonToken = JToken.Parse(jsonData);
+            DetectAdditionalFieldsRecursive(jsonToken, schema, "", warnings);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error detecting additional fields");
+        }
+
+        return warnings;
+    }
+
+    /// <summary>
+    /// Recursively traverses the JSON data and schema to detect fields not defined in the schema.
+    /// </summary>
+    private void DetectAdditionalFieldsRecursive(JToken jsonToken, JSchema schema, string currentPath, List<ValidationError> warnings)
+    {
+        // Handle objects
+        if (jsonToken.Type == JTokenType.Object && jsonToken is JObject jObject)
+        {
+            // Get the properties defined in the schema
+            var schemaProperties = schema.Properties ?? new Dictionary<string, JSchema>();
+            var additionalPropertiesAllowed = schema.AllowAdditionalProperties;
+            var additionalPropertiesSchema = schema.AdditionalProperties;
+
+            foreach (var property in jObject.Properties())
+            {
+                var propertyPath = string.IsNullOrEmpty(currentPath) ? property.Name : $"{currentPath}.{property.Name}";
+
+                // Check if this property is defined in the schema
+                if (!schemaProperties.ContainsKey(property.Name))
+                {
+                    // Property not defined in schema - report it
+                    warnings.Add(new ValidationError
+                    {
+                        Path = propertyPath,
+                        Message = $"Field '{property.Name}' is not defined in the schema",
+                        ErrorCode = "ADDITIONAL_FIELD",
+                        Severity = "Info"
+                    });
+                }
+
+                // Recursively check nested properties if there's a schema definition
+                if (schemaProperties.TryGetValue(property.Name, out var propertySchema))
+                {
+                    DetectAdditionalFieldsRecursive(property.Value, propertySchema, propertyPath, warnings);
+                }
+                else if (additionalPropertiesSchema != null)
+                {
+                    // If there's an additionalProperties schema, use it for validation
+                    DetectAdditionalFieldsRecursive(property.Value, additionalPropertiesSchema, propertyPath, warnings);
+                }
+            }
+        }
+        // Handle arrays
+        else if (jsonToken.Type == JTokenType.Array && jsonToken is JArray jArray)
+        {
+            var itemsSchema = schema.Items?.FirstOrDefault();
+            if (itemsSchema != null)
+            {
+                for (int i = 0; i < jArray.Count; i++)
+                {
+                    var itemPath = $"{currentPath}[{i}]";
+                    DetectAdditionalFieldsRecursive(jArray[i], itemsSchema, itemPath, warnings);
+                }
+            }
         }
     }
 

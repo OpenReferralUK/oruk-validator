@@ -576,7 +576,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 // Validate response if schema is defined
                 if (testResult.IsSuccess && testResult.ResponseBody != null)
                 {
-                    await ValidateResponseAsync(testResult, operation, openApiDocument, documentUri, cancellationToken);
+                    await ValidateResponseAsync(testResult, operation, openApiDocument, documentUri, options, cancellationToken);
                     result.Status = testResult.ValidationResult != null && testResult.ValidationResult.IsValid ? "Success" : "Failed";
                 }
 
@@ -685,7 +685,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         // Validate first page response schema
         if (firstPageResult.ResponseBody != null)
         {
-            await ValidateResponseAsync(firstPageResult, operation, openApiDocument, documentUri, cancellationToken);
+            await ValidateResponseAsync(firstPageResult, operation, openApiDocument, documentUri, options, cancellationToken);
         }
 
         // Try to determine total pages and check for empty feed
@@ -722,7 +722,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                 if (middlePageResult.IsSuccess && middlePageResult.ResponseBody != null)
                 {
-                    await ValidateResponseAsync(middlePageResult, operation, openApiDocument, documentUri, cancellationToken);
+                    await ValidateResponseAsync(middlePageResult, operation, openApiDocument, documentUri, options, cancellationToken);
                 }
             }
 
@@ -734,7 +734,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             if (lastPageResult.IsSuccess && lastPageResult.ResponseBody != null)
             {
-                await ValidateResponseAsync(lastPageResult, operation, openApiDocument, documentUri, cancellationToken);
+                await ValidateResponseAsync(lastPageResult, operation, openApiDocument, documentUri, options, cancellationToken);
             }
         }
         else
@@ -964,7 +964,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         return testResult;
     }
 
-    private async Task ValidateResponseAsync(HttpTestResult testResult, JObject operation, JObject openApiDocument, string? documentUri, CancellationToken cancellationToken)
+    private async Task ValidateResponseAsync(HttpTestResult testResult, JObject operation, JObject openApiDocument, string? documentUri, OpenApiValidationOptions options, CancellationToken cancellationToken)
     {
         try
         {
@@ -996,7 +996,11 @@ public class OpenApiValidationService : IOpenApiValidationService
                                     var validationRequest = new ValidationRequest
                                     {
                                         JsonData = JsonConvert.DeserializeObject(testResult.ResponseBody ?? "{}"),
-                                        Schema = schema
+                                        Schema = schema,
+                                        Options = new ValidationOptions
+                                        {
+                                            ReportAdditionalFields = options?.ReportAdditionalFields ?? false
+                                        }
                                     };
                                     var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
                                     testResult.ValidationResult = validationResult;

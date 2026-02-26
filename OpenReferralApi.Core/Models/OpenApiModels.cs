@@ -207,6 +207,16 @@ public class OpenApiValidationOptions
     /// </summary>
     [JsonProperty("returnRawResult")]
     public bool ReturnRawResult { get; set; } = false;
+
+    /// <summary>
+    /// Whether to report fields in endpoint responses that are not defined in the schema.
+    /// When true, validates response data against the schema and reports any fields that exist in the response
+    /// but are not defined in the schema as informational messages.
+    /// When false (default), only standard schema validation is performed.
+    /// Useful for identifying undocumented fields, schema drift, or incomplete specifications.
+    /// </summary>
+    [JsonProperty("reportAdditionalFields")]
+    public bool ReportAdditionalFields { get; set; } = false;
 }
 
 /// <summary>

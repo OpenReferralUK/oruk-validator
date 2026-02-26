@@ -608,10 +608,90 @@ public class SchemaResolverService : ISchemaResolverService
       {
         result[kvp.Key] = await ResolveAllRefsAsync(kvp.Value, visitedRefs);
       }
+
+      // Flatten resolved allOf properties to make composite fields discoverable.
+      MergeAllOfIntoObject(result);
+
       return result;
     }
 
     return obj;
+  }
+
+  private static void MergeAllOfIntoObject(JsonObject target)
+  {
+    if (!target.TryGetPropertyValue("allOf", out var allOfNode) || allOfNode is not JsonArray allOfArray)
+    {
+      return;
+    }
+
+    JsonObject? targetProperties = null;
+    if (target.TryGetPropertyValue("properties", out var propsNode) && propsNode is JsonObject propsObject)
+    {
+      targetProperties = propsObject;
+    }
+
+    JsonArray? targetRequired = null;
+    if (target.TryGetPropertyValue("required", out var requiredNode) && requiredNode is JsonArray requiredArray)
+    {
+      targetRequired = requiredArray;
+    }
+
+    foreach (var item in allOfArray)
+    {
+      if (item is not JsonObject itemObject)
+      {
+        continue;
+      }
+
+      if (itemObject.TryGetPropertyValue("properties", out var itemPropsNode) && itemPropsNode is JsonObject itemProps)
+      {
+        targetProperties ??= new JsonObject();
+
+        foreach (var kvp in itemProps)
+        {
+          if (!targetProperties.ContainsKey(kvp.Key))
+          {
+            targetProperties[kvp.Key] = kvp.Value?.DeepClone();
+          }
+        }
+      }
+
+      if (itemObject.TryGetPropertyValue("required", out var itemRequiredNode) && itemRequiredNode is JsonArray itemRequired)
+      {
+        targetRequired ??= new JsonArray();
+
+        foreach (var requiredItem in itemRequired)
+        {
+          if (requiredItem is not JsonValue requiredValue)
+          {
+            continue;
+          }
+
+          var requiredName = requiredValue.GetValue<string>();
+          if (!targetRequired.Any(existing => existing?.GetValue<string>() == requiredName))
+          {
+            targetRequired.Add(requiredName);
+          }
+        }
+      }
+
+      if (!target.TryGetPropertyValue("type", out _) &&
+          itemObject.TryGetPropertyValue("type", out var itemTypeNode))
+      {
+        target["type"] = itemTypeNode?.DeepClone();
+      }
+    }
+
+    if (targetProperties != null)
+    {
+      target["properties"] = targetProperties;
+    }
+
+    if (targetRequired != null)
+    {
+      target["required"] = targetRequired;
+    }
   }
 
   /// <summary>

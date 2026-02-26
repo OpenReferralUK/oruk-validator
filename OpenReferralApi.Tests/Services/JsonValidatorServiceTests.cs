@@ -280,6 +280,203 @@ public class JsonValidatorServiceTests
         Assert.That(result.Errors, Has.Exactly(1).Matches<OpenReferralApi.Core.Models.ValidationError>(error => error.ErrorCode == "SCHEMA_VALIDATION_ERROR"));
     }
 
+    [Test]
+    public async Task ValidateAsync_WithReportAdditionalFields_ReportsFieldsNotInSchema()
+    {
+        // Arrange
+        var schema = new
+        {
+            type = "object",
+            properties = new
+            {
+                name = new { type = "string" },
+                age = new { type = "number" }
+            },
+            required = new[] { "name" },
+            additionalProperties = true
+        };
+
+        var request = new ValidationRequest
+        {
+            JsonData = new
+            {
+                name = "Ada Lovelace",
+                age = 36,
+                email = "ada@example.com",  // Not in schema
+                address = new  // Not in schema
+                {
+                    city = "London",
+                    country = "UK"
+                }
+            },
+            Schema = schema,
+            Options = new ValidationOptions
+            {
+                ReportAdditionalFields = true
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True, "Data should be valid even with additional fields");
+        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "email"),
+            "Should report 'email' as an additional field");
+        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "address"),
+            "Should report 'address' as an additional field");
+        Assert.That(result.Errors.Where(e => e.ErrorCode == "ADDITIONAL_FIELD").All(e => e.Severity == "Info"),
+            "Additional field warnings should have 'Info' severity");
+    }
+
+    [Test]
+    public async Task ValidateAsync_WithReportAdditionalFieldsFalse_DoesNotReportAdditionalFields()
+    {
+        // Arrange
+        var schema = new
+        {
+            type = "object",
+            properties = new
+            {
+                name = new { type = "string" }
+            },
+            required = new[] { "name" },
+            additionalProperties = true
+        };
+
+        var request = new ValidationRequest
+        {
+            JsonData = new
+            {
+                name = "Ada Lovelace",
+                email = "ada@example.com"  // Not in schema
+            },
+            Schema = schema,
+            Options = new ValidationOptions
+            {
+                ReportAdditionalFields = false  // Explicitly disabled
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.Errors, Has.None.Matches<OpenReferralApi.Core.Models.ValidationError>(
+            e => e.ErrorCode == "ADDITIONAL_FIELD"),
+            "Should not report additional fields when option is disabled");
+    }
+
+    [Test]
+    public async Task ValidateAsync_WithReportAdditionalFields_HandlesNestedObjects()
+    {
+        // Arrange
+        var schema = new
+        {
+            type = "object",
+            properties = new
+            {
+                name = new { type = "string" },
+                address = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        city = new { type = "string" }
+                    },
+                    additionalProperties = true
+                }
+            },
+            additionalProperties = true
+        };
+
+        var request = new ValidationRequest
+        {
+            JsonData = new
+            {
+                name = "Ada Lovelace",
+                address = new
+                {
+                    city = "London",
+                    postcode = "SW1A 1AA"  // Not in schema
+                }
+            },
+            Schema = schema,
+            Options = new ValidationOptions
+            {
+                ReportAdditionalFields = true
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "address.postcode"),
+            "Should report nested additional fields");
+    }
+
+    [Test]
+    public async Task ValidateAsync_WithReportAdditionalFields_HandlesArrays()
+    {
+        // Arrange
+        var schema = new
+        {
+            type = "object",
+            properties = new
+            {
+                users = new
+                {
+                    type = "array",
+                    items = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            name = new { type = "string" }
+                        },
+                        additionalProperties = true
+                    }
+                }
+            },
+            additionalProperties = true
+        };
+
+        var request = new ValidationRequest
+        {
+            JsonData = new
+            {
+                users = new object[]
+                {
+                    new { name = "Ada", age = 36 },  // 'age' not in schema
+                    new { name = "Charles", role = "Professor" }  // 'role' not in schema
+                }
+            },
+            Schema = schema,
+            Options = new ValidationOptions
+            {
+                ReportAdditionalFields = true
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[0].age"),
+            "Should report additional fields in array items");
+        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[1].role"),
+            "Should report additional fields in array items");
+    }
+
     private void SetupHttpMock(string schemaJson, string dataJson)
     {
         var mockHandler = new MockHttpMessageHandler(schemaJson, dataJson);
