@@ -1,0 +1,78 @@
+name: Deploy to Heroku (production)
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  packages: read   # To pull from GHCR
+  contents: write  # To create GitHub releases
+
+jobs:
+  
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Login to Heroku Container Registry
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: heroku container:login
+
+      - name: Ensure container stack (production)
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: heroku stack:set container --app ${{ vars.HEROKU_PROD_APP }}
+
+      - name: Prepare lowercase image name
+        id: lowercase
+        run: |
+          repo_owner="${{ github.repository_owner }}"
+          repo_name="${{ github.event.repository.name }}"
+          echo "repo_owner=$(echo "$repo_owner" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+          echo "repo_name=$(echo "$repo_name" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Pull tested image from GHCR & deploy to Heroku Production
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          IMAGE_NAME: ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/${{ steps.lowercase.outputs.repo_name }}
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          echo "Deploying tested image: ${IMAGE_NAME}:sha-${SHORT_SHA} → ${{ vars.HEROKU_PROD_APP }}"
+
+          # Login to GHCR
+          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+          docker pull ${IMAGE_NAME}:sha-${SHORT_SHA}
+
+          echo "Pushing to Heroku..."
+          docker tag ${IMAGE_NAME}:sha-${SHORT_SHA} registry.heroku.com/${{ vars.HEROKU_PROD_APP }}/web:latest
+
+          heroku container:push web --app ${{ vars.HEROKU_PROD_APP }}
+          
+          echo "Releasing..."
+          heroku container:release web --app ${{ vars.HEROKU_PROD_APP }}
+
+          echo "Health check..."
+          sleep 12
+          curl --fail "${{ vars.HEALTH_ENDPOINT }}" || echo "⚠️ Health check failed – check Heroku logs"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2.5.0
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Release v${{ github.run_number }}
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
