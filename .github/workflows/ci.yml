@@ -169,10 +169,19 @@ jobs:
       - name: Record image reference
         id: image_ref
         run: |
-          REAL_SHA="${{ github.event.pull_request.head.sha }}"
+          # Use Head SHA for PRs, or github.sha for direct pushes
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            REAL_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            REAL_SHA="${{ github.sha }}"
+          fi
           SHORT_SHA=$(echo $REAL_SHA | cut -c1-7)
           
-          echo "image_ref=ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/${{ steps.lowercase.outputs.repo_name }}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          IMAGE_NAME="ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/${{ steps.lowercase.outputs.repo_name }}"
+          FULL_REF="${IMAGE_NAME}:sha-${SHORT_SHA}"
+
+          echo "image_ref=$FULL_REF" >> "$GITHUB_OUTPUT"
+          echo "Recorded image reference for next jobs: $FULL_REF"
           
       - name: Build and push Docker image
         uses: docker/build-push-action@v6.19.2
