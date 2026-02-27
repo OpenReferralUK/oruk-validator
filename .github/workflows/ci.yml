@@ -148,7 +148,8 @@ jobs:
         with:
           images: ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/${{ steps.lowercase.outputs.repo_name }}
           tags: |
-            type=sha,format=short,value=${{ github.event.pull_request.head.sha || github.sha }}
+            # Explicitly use the same SHA as your manual Record step
+            type=sha,format=short,prefix=sha-,value=${{ github.event.pull_request.head.sha || github.sha }}
       - name: Record image reference
         id: image_ref
         run: |
@@ -191,16 +192,10 @@ jobs:
           format: 'sarif'
           output: 'trivy-image-results.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM,UNKNOWN'
-      - name: Diagnose missing Trivy SARIF
-        if: always()
-        run: |
-          if [ ! -f trivy-image-results.sarif ]; then
-            echo "SARIF missing. Running diagnostic scan."
-            docker run --rm ${{ env.TRIVY_DOCKER_IMAGE }} image --debug --format sarif --output trivy-image-results.sarif ${{ needs.docker-build.outputs.image_ref }} || true
-          fi
+
       - name: Upload Trivy Image SARIF
         uses: github/codeql-action/upload-sarif@v4.32.4
-        if: steps.trivy_sarif.outputs.present == 'true'
+        if: always()
         with:
           sarif_file: trivy-image-results.sarif
 
