@@ -1,10 +1,7 @@
 name: Deploy to Heroku
 
 on:
-  workflow_run:
-    workflows: ["CI/CD Pipeline"]
-    types:
-      - completed
+  push:
     branches: [staging, main]
 
 concurrency:
@@ -19,11 +16,6 @@ jobs:
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
-    if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.actor.login != 'dependabot[bot]' &&
-      github.event.workflow_run.head_branch == 'staging'
 
     steps:
       - name: Checkout code
@@ -55,7 +47,7 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           IMAGE_NAME: ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/${{ steps.lowercase.outputs.repo_name }}
         run: |
-          SHORT_SHA=$(echo ${{ github.event.workflow_run.head_sha }} | cut -c1-7)
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "Deploying tested image: ${IMAGE_NAME}:sha-${SHORT_SHA} → ${{ vars.HEROKU_STAGING_APP }}"
 
           # Login to GHCR
@@ -79,11 +71,6 @@ jobs:
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.actor.login != 'dependabot[bot]' &&
-      github.event.workflow_run.head_branch == 'main'
 
     steps:
       - name: Checkout code
@@ -115,7 +102,7 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           IMAGE_NAME: ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/${{ steps.lowercase.outputs.repo_name }}
         run: |
-          SHORT_SHA=$(echo ${{ github.event.workflow_run.head_sha }} | cut -c1-7)
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "Deploying tested image: ${IMAGE_NAME}:sha-${SHORT_SHA} → ${{ vars.HEROKU_PROD_APP }}"
 
           # Login to GHCR
@@ -138,8 +125,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2.5.0
         with:
-          tag_name: v${{ github.event.workflow_run.run_number }}
-          name: Release v${{ github.event.workflow_run.run_number }}
+          tag_name: v${{ github.run_number }}
+          name: Release v${{ github.run_number }}
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}

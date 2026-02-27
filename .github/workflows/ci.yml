@@ -3,8 +3,6 @@ name: CI/CD Pipeline
 on:
   pull_request:
     branches: [staging, main]
-  push:
-    branches: [staging, main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
