@@ -256,6 +256,7 @@ jobs:
       - name: Run ZAP Scan
         run: |
           mkdir -p ${{ github.workspace }}/zap-reports
+          chmod 777 ${{ github.workspace }}/zap-reports
           docker run --rm --network zap-network -v ${{ github.workspace }}/zap-reports:/zap/wrk/:rw ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://app:80 -J report_json.json -I || true
       - name: Upload ZAP results
         if: always() && hashFiles('zap-reports/*') != ''
