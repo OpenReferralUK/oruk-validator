@@ -272,6 +272,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
       - name: Deploy to Heroku
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
@@ -280,6 +282,7 @@ jobs:
           echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           docker pull $IMAGE_TAG
           heroku container:login
+          heroku stack:set container --app ${{ vars.HEROKU_STAGING_APP }}
           docker tag $IMAGE_TAG registry.heroku.com/${{ vars.HEROKU_STAGING_APP }}/web:latest
           heroku container:push web --app ${{ vars.HEROKU_STAGING_APP }}
           heroku container:release web --app ${{ vars.HEROKU_STAGING_APP }}
@@ -293,6 +296,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
       - name: Deploy to Heroku
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
@@ -301,6 +306,7 @@ jobs:
           echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           docker pull $IMAGE_TAG
           heroku container:login
+          heroku stack:set container --app ${{ vars.HEROKU_PROD_APP }}
           docker tag $IMAGE_TAG registry.heroku.com/${{ vars.HEROKU_PROD_APP }}/web:latest
           heroku container:push web --app ${{ vars.HEROKU_PROD_APP }}
           heroku container:release web --app ${{ vars.HEROKU_PROD_APP }}
