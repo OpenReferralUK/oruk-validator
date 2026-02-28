@@ -284,7 +284,7 @@ jobs:
           heroku container:login
           heroku stack:set container --app ${{ vars.HEROKU_STAGING_APP }}
           docker tag $IMAGE_TAG registry.heroku.com/${{ vars.HEROKU_STAGING_APP }}/web:latest
-          heroku container:push web --app ${{ vars.HEROKU_STAGING_APP }}
+          docker push registry.heroku.com/${{ vars.HEROKU_STAGING_APP }}/web:latest
           heroku container:release web --app ${{ vars.HEROKU_STAGING_APP }}
           sleep 12
           curl --fail "${{ vars.STAGING_HEALTH_ENDPOINT }}" || echo "⚠️ Staging health check failed"
@@ -308,7 +308,7 @@ jobs:
           heroku container:login
           heroku stack:set container --app ${{ vars.HEROKU_PROD_APP }}
           docker tag $IMAGE_TAG registry.heroku.com/${{ vars.HEROKU_PROD_APP }}/web:latest
-          heroku container:push web --app ${{ vars.HEROKU_PROD_APP }}
+          docker push registry.heroku.com/${{ vars.HEROKU_PROD_APP }}/web:latest
           heroku container:release web --app ${{ vars.HEROKU_PROD_APP }}
           sleep 12
           curl --fail "${{ vars.HEALTH_ENDPOINT }}" || echo "⚠️ Production health check failed"
