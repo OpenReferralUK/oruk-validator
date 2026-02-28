@@ -105,6 +105,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6.0.2
+      - name: Cache Trivy database
+        uses: actions/cache@v5.0.3
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: trivy-db-
       - name: Run Trivy (fs)
         uses: aquasecurity/trivy-action@0.34.1
         with:
@@ -150,6 +156,13 @@ jobs:
           tags: |
             # Explicitly use the same SHA as your manual Record step
             type=sha,format=short,prefix=sha-,value=${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Determine commit SHA
+        id: vars
+        run: |
+          COMMIT_SHA=${{ github.event.pull_request.head.sha || github.sha }}
+          SHORT_SHA=$(echo $COMMIT_SHA | cut -c1-7)
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
       - name: Build and push
         id: build
         uses: docker/build-push-action@v6.19.2
@@ -182,6 +195,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6.0.2
+      - name: Cache Trivy database
+        uses: actions/cache@v5.0.3
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: trivy-db-
       - name: Login to GHCR
         uses: docker/login-action@v3.7.0
         with:
