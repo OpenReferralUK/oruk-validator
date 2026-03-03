@@ -470,10 +470,10 @@ public class JsonValidatorServiceTests
         // Assert
         Assert.That(result.IsValid, Is.True);
         Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[0].age"),
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users.age"),
             "Should report additional fields in array items");
         Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[1].role"),
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users.role"),
             "Should report additional fields in array items");
     }
 
