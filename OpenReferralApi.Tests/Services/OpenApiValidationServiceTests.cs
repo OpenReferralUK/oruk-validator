@@ -3,7 +3,6 @@ using Moq;
 using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
-using System.Linq;
 
 namespace OpenReferralApi.Tests.Services;
 

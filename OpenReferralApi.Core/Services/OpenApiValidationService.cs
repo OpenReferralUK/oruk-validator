@@ -1192,9 +1192,9 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Analyzes the structure of the OpenAPI specification components
     /// </summary>
-    private OpenApiSchemaAnalysis AnalyzeSchemaStructure(JObject specObject)
+    private SchemaAnalysis AnalyzeSchemaStructure(JObject specObject)
     {
-        var analysis = new OpenApiSchemaAnalysis();
+        var analysis = new SchemaAnalysis();
 
         try
         {
@@ -1273,9 +1273,9 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Analyzes quality metrics of the OpenAPI specification
     /// </summary>
-    private OpenApiQualityMetrics AnalyzeQualityMetrics(JObject specObject)
+    private QualityMetrics AnalyzeQualityMetrics(JObject specObject)
     {
-        var metrics = new OpenApiQualityMetrics();
+        var metrics = new QualityMetrics();
 
         try
         {
@@ -1438,7 +1438,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         return false;
     }
 
-    private void CountSchemaDescriptions(JObject specObject, OpenApiQualityMetrics metrics)
+    private void CountSchemaDescriptions(JObject specObject, QualityMetrics metrics)
     {
         // Count schemas in components (OpenAPI 3.x)
         if (specObject.ContainsKey("components"))
@@ -1475,7 +1475,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
     }
 
-    private void CalculateQualityScore(OpenApiQualityMetrics metrics)
+    private void CalculateQualityScore(QualityMetrics metrics)
     {
         double score = 0;
         int factors = 0;
@@ -1518,16 +1518,16 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Generates recommendations based on analysis results
     /// </summary>
-    private List<OpenApiRecommendation> GenerateRecommendations(JObject specObject, List<ValidationError> errors)
+    private List<Recommendation> GenerateRecommendations(JObject specObject, List<ValidationError> errors)
     {
-        var recommendations = new List<OpenApiRecommendation>();
+        var recommendations = new List<Recommendation>();
 
         try
         {
             // Convert errors to recommendations
             foreach (var error in errors.Where(e => e.Severity == "Error"))
             {
-                recommendations.Add(new OpenApiRecommendation
+                recommendations.Add(new Recommendation
                 {
                     Type = "Error",
                     Category = "Validation",
@@ -1542,7 +1542,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             // Convert warnings to recommendations
             foreach (var error in errors.Where(e => e.Severity == "Warning"))
             {
-                recommendations.Add(new OpenApiRecommendation
+                recommendations.Add(new Recommendation
                 {
                     Type = "Warning",
                     Category = "Best Practice",
@@ -1565,7 +1565,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         return recommendations;
     }
 
-    private void AddQualityRecommendations(JObject specObject, List<OpenApiRecommendation> recommendations)
+    private void AddQualityRecommendations(JObject specObject, List<Recommendation> recommendations)
     {
         // Check for missing info fields
         if (!specObject.ContainsKey("info") || specObject["info"] is not JObject infoObject)
@@ -1575,7 +1575,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         if (!infoObject.ContainsKey("description") || string.IsNullOrWhiteSpace(infoObject["description"]?.ToString()))
         {
-            recommendations.Add(new OpenApiRecommendation
+            recommendations.Add(new Recommendation
             {
                 Type = "Improvement",
                 Category = "Documentation",
@@ -1589,7 +1589,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         if (!infoObject.ContainsKey("contact"))
         {
-            recommendations.Add(new OpenApiRecommendation
+            recommendations.Add(new Recommendation
             {
                 Type = "Improvement",
                 Category = "Documentation",
@@ -1603,7 +1603,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         if (!infoObject.ContainsKey("license"))
         {
-            recommendations.Add(new OpenApiRecommendation
+            recommendations.Add(new Recommendation
             {
                 Type = "Improvement",
                 Category = "Legal",
