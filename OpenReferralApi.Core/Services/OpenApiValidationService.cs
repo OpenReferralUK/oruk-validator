@@ -74,9 +74,9 @@ public class OpenApiValidationService : IOpenApiValidationService
             JObject openApiSpec;
             if (!string.IsNullOrEmpty(request.OpenApiSchema?.Url))
             {
-                var fetchedSchema = await FetchOpenApiSpecFromUrlAsync(request.OpenApiSchema.Url, request.OpenApiSchema.Authentication, cancellationToken);
-                openApiSpec = JObject.Parse(fetchedSchema.ToString());
-                // External references are already resolved by FetchOpenApiSpecFromUrlAsync
+                // FetchOpenApiSpecFromUrlAsync now returns a fully resolved JObject
+                // All $ref references are already resolved, avoiding double resolution
+                openApiSpec = await FetchOpenApiSpecFromUrlAsync(request.OpenApiSchema.Url, request.OpenApiSchema.Authentication, cancellationToken);
             }
             else
             {
@@ -992,7 +992,9 @@ public class OpenApiValidationService : IOpenApiValidationService
                                 {
                                     var schemaJson = schema.ToString();
                                     _logger.LogDebug("validating against schemaJson: {schemaJson}", schemaJson);
-                                    // Use standard validation - SchemaResolverService handles all reference resolution
+                                    // Schema is extracted from the already-resolved OpenAPI document
+                                    // All $ref references were resolved when fetching the OpenAPI spec
+                                    // JsonValidatorService will create a JSchema from this resolved schema
                                     var validationRequest = new ValidationRequest
                                     {
                                         JsonData = JsonConvert.DeserializeObject(testResult.ResponseBody ?? "{}"),
@@ -1068,7 +1070,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         return errors;
     }
 
-    private async Task<JSchema> FetchOpenApiSpecFromUrlAsync(string specUrl, DataSourceAuthentication? auth, CancellationToken cancellationToken)
+    private async Task<JObject> FetchOpenApiSpecFromUrlAsync(string specUrl, DataSourceAuthentication? auth, CancellationToken cancellationToken)
     {
         try
         {
@@ -1093,9 +1095,13 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            // Use SchemaResolverService for consistent reference resolution and JSchema creation
-            // Pass authentication so nested schema references can also be authenticated
-            return await _schemaResolverService.CreateSchemaFromJsonAsync(content, specUrl, auth, cancellationToken);
+            // Use SchemaResolverService to resolve all $ref references in the OpenAPI document
+            // This resolves references once and returns the complete document as a string
+            var resolvedContent = await _schemaResolverService.ResolveAsync(content, specUrl, auth);
+            
+            // Parse the resolved document to JObject for further processing
+            // All $ref references are already resolved, so schemas can be used directly
+            return JObject.Parse(resolvedContent);
         }
         catch (Exception ex)
         {
@@ -1543,30 +1549,6 @@ public class OpenApiValidationService : IOpenApiValidationService
         return recommendations;
     }
 
-    /// <summary>
-    /// Represents an endpoint group with collection and parameterized endpoints
-    /// </summary>
-    private class EndpointGroup
-    {
-        public string RootPath { get; set; } = string.Empty;
-        public List<EndpointInfo> CollectionEndpoints { get; set; } = new();
-        public List<EndpointInfo> ParameterizedEndpoints { get; set; } = new();
-        public List<EndpointInfo> Endpoints => CollectionEndpoints.Concat(ParameterizedEndpoints).ToList();
-    }
-
-    /// <summary>
-    /// Represents a single endpoint with its metadata
-    /// </summary>
-    private class EndpointInfo
-    {
-        public string Path { get; set; } = string.Empty;
-        public string Method { get; set; } = string.Empty;
-        public JObject Operation { get; set; } = new();
-        public JObject PathItem { get; set; } = new();
-        public bool IsParameterized => Path.Contains('{');
-        public string RootPath => GetRootPath(Path);
-    }
-
     private void AddQualityRecommendations(JObject specObject, List<OpenApiRecommendation> recommendations)
     {
         // Check for missing info fields
@@ -1675,27 +1657,6 @@ public class OpenApiValidationService : IOpenApiValidationService
     }
 
     /// <summary>
-    /// Gets the root path from a full path (e.g., /services/{id} -> /services)
-    /// </summary>
-    private static string GetRootPath(string path)
-    {
-        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length == 0)
-            return "/";
-
-        // Take segments until we hit a parameter
-        var rootSegments = new List<string>();
-        foreach (var segment in segments)
-        {
-            if (segment.StartsWith('{') && segment.EndsWith('}'))
-                break;
-            rootSegments.Add(segment);
-        }
-
-        return rootSegments.Any() ? "/" + string.Join("/", rootSegments) : "/";
-    }
-
-    /// <summary>
     /// Tests an endpoint and extracts IDs from the response for use by dependent endpoints.
     /// The extractedIds dictionary is updated with any IDs found in the response.
     /// </summary>
@@ -1720,7 +1681,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         // Extract IDs from successful GET responses for dependency testing
         if (method == "GET" && result.TestResults.Any(r => r.IsSuccess && !string.IsNullOrEmpty(r.ResponseBody)))
         {
-            var rootPath = GetRootPath(path);
+            var rootPath = EndpointInfo.GetRootPath(path);
             var successfulResponse = result.TestResults.First(r => r.IsSuccess);
 
             _logger.LogInformation("Processing HTTP response from {Url} (Status: {StatusCode}, ResponseSize: {Size} chars)",
@@ -1785,7 +1746,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         ConcurrentDictionary<string, List<string>> extractedIds, SemaphoreSlim semaphore,
         JObject openApiDocument, string? documentUri, JObject pathItem, CancellationToken cancellationToken)
     {
-        var rootPath = GetRootPath(path);
+        var rootPath = EndpointInfo.GetRootPath(path);
 
         _logger.LogInformation("🔍 Looking for extracted IDs for root path '{RootPath}'. Available keys in dictionary: [{Keys}]",
             rootPath, string.Join(", ", extractedIds.Keys));
