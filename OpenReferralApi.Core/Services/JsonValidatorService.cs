@@ -442,6 +442,7 @@ public class JsonValidatorService : IJsonValidatorService
     /// <summary>
     /// Detects fields in the JSON data that are not defined in the schema.
     /// Returns a list of validation warnings for each additional field found.
+    /// Normalizes optional wrapper prefixes (for example "content.") and returns only unique results.
     /// </summary>
     private List<ValidationError> DetectAdditionalFields(string jsonData, JSchema schema)
     {
@@ -451,6 +452,21 @@ public class JsonValidatorService : IJsonValidatorService
         {
             var jsonToken = JToken.Parse(jsonData);
             DetectAdditionalFieldsRecursive(jsonToken, schema, "", warnings);
+            
+            // Remove prefix up to first "." and return only unique results
+            var uniqueWarnings = new Dictionary<string, ValidationError>();
+            
+            foreach (var warning in warnings)
+            {
+                var normalizedPath = NormalizeAdditionalFieldPath(warning.Path);
+                if (!uniqueWarnings.ContainsKey(normalizedPath))
+                {
+                    warning.Path = normalizedPath;
+                    uniqueWarnings[normalizedPath] = warning;
+                }
+            }
+            
+            return uniqueWarnings.Values.ToList();
         }
         catch (Exception ex)
         {
@@ -515,6 +531,24 @@ public class JsonValidatorService : IJsonValidatorService
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Removes known top-level wrapper prefixes while preserving valid nested field paths.
+    /// </summary>
+    private string NormalizeAdditionalFieldPath(string path)
+    {
+        if (path.StartsWith("content.", StringComparison.Ordinal))
+        {
+            return path.Substring("content.".Length);
+        }
+
+        if (path.StartsWith("contents.", StringComparison.Ordinal))
+        {
+            return path.Substring("contents.".Length);
+        }
+
+        return path;
     }
 
 }
