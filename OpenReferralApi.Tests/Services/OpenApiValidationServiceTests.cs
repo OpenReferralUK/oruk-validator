@@ -3,7 +3,6 @@ using Moq;
 using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
-using System.Linq;
 
 namespace OpenReferralApi.Tests.Services;
 
@@ -42,6 +41,11 @@ public class OpenApiValidationServiceTests
         _schemaResolverServiceMock
             .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string schemaJson, CancellationToken ct) => JSchema.Parse(schemaJson));
+
+        // Mock ResolveAsync method for OpenAPI document resolution
+        _schemaResolverServiceMock
+            .Setup(service => service.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>()))
+            .ReturnsAsync((string schema, string baseUri, DataSourceAuthentication auth) => schema);
 
         var mockHandler = new MockHttpMessageHandler();
         _httpClient = new HttpClient(mockHandler);
