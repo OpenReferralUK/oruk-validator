@@ -84,15 +84,6 @@ public class OpenApiValidationOptions
     public bool IncludeTestResults { get; set; } = true;
 
     /// <summary>
-    /// Whether to return the raw OpenApiValidationResult format or map to the standard ValidationResponse format.
-    /// When true, returns the raw OpenApiValidationResult with comprehensive details.
-    /// When false (default), maps to the ValidationResponse format for consistency with other validation endpoints.
-    /// The raw format provides more detailed OpenAPI-specific analysis and metrics.
-    /// </summary>
-    [JsonProperty("returnRawResult")]
-    public bool ReturnRawResult { get; set; } = false;
-
-    /// <summary>
     /// Whether to report fields in endpoint responses that are not defined in the schema.
     /// When true, validates response data against the schema and reports any fields that exist in the response
     /// but are not defined in the schema as informational messages.

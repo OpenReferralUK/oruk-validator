@@ -7,12 +7,12 @@ namespace OpenReferralApi.Core.Services;
 /// </summary>
 public interface IOpenApiToValidationResponseMapper
 {
-    object MapToValidationResponse(OpenApiValidationResult openApiResult);
+    OpenReferralUKValidationResponse MapToValidationResponse(OpenApiValidationResult openApiResult);
 }
 
 public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMapper
 {
-    public object MapToValidationResponse(OpenApiValidationResult openApiResult)
+    public OpenReferralUKValidationResponse MapToValidationResponse(OpenApiValidationResult openApiResult)
     {
         var testSuites = new List<object>();
 
@@ -50,16 +50,16 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
                        openApiResult?.Summary?.FailedTests == 0 && 
                        (openApiResult?.SpecificationValidation?.IsValid ?? true);
 
-        return new
+        return new OpenReferralUKValidationResponse
         {
-            service = new
+            Service = new ServiceInfo
             {
-                url = openApiResult?.Metadata?.BaseUrl ?? "",
-                isValid = isValid,
-                profile = $"{openApiResult?.SpecificationValidation?.Version ?? "Unknown"}",
-                profileReason = openApiResult?.Metadata?.ProfileReason ?? "Unknown"
+                Url = openApiResult?.Metadata?.BaseUrl ?? "",
+                IsValid = isValid,
+                Profile = $"{openApiResult?.SpecificationValidation?.Version ?? "Unknown"}",
+                ProfileReason = openApiResult?.Metadata?.ProfileReason ?? "Unknown"
             },
-            testSuites = testSuites
+            TestSuites = testSuites
         };
     }
 
