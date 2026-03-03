@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Models;
+using System.Text.RegularExpressions;
 using ValidationError = OpenReferralApi.Core.Models.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
@@ -442,7 +443,7 @@ public class JsonValidatorService : IJsonValidatorService
     /// <summary>
     /// Detects fields in the JSON data that are not defined in the schema.
     /// Returns a list of validation warnings for each additional field found.
-    /// Normalizes optional wrapper prefixes (for example "content.") and returns only unique results.
+    /// Normalizes array index segments (for example "items[0]" -> "items") and returns only unique results.
     /// </summary>
     private List<ValidationError> DetectAdditionalFields(string jsonData, JSchema schema)
     {
@@ -453,7 +454,7 @@ public class JsonValidatorService : IJsonValidatorService
             var jsonToken = JToken.Parse(jsonData);
             DetectAdditionalFieldsRecursive(jsonToken, schema, "", warnings);
             
-            // Remove prefix up to first "." and return only unique results
+            // Normalize paths and keep only unique warnings by normalized path
             var uniqueWarnings = new Dictionary<string, ValidationError>();
             
             foreach (var warning in warnings)
@@ -500,7 +501,7 @@ public class JsonValidatorService : IJsonValidatorService
                     warnings.Add(new ValidationError
                     {
                         Path = propertyPath,
-                        Message = $"Field '{property.Name}' is not defined in the schema",
+                        Message = $"Field '{propertyPath}' is not defined in the schema",
                         ErrorCode = "ADDITIONAL_FIELD",
                         Severity = "Info"
                     });
@@ -534,21 +535,11 @@ public class JsonValidatorService : IJsonValidatorService
     }
 
     /// <summary>
-    /// Removes known top-level wrapper prefixes while preserving valid nested field paths.
+    /// Removes array index segments from a path (for example "service_at_locations[0]" -> "service_at_locations").
     /// </summary>
     private string NormalizeAdditionalFieldPath(string path)
     {
-        if (path.StartsWith("content.", StringComparison.Ordinal))
-        {
-            return path.Substring("content.".Length);
-        }
-
-        if (path.StartsWith("contents.", StringComparison.Ordinal))
-        {
-            return path.Substring("contents.".Length);
-        }
-
-        return path;
+        return Regex.Replace(path, @"\[[^\]]*\]", "");
     }
 
 }
