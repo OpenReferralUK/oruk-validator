@@ -72,11 +72,13 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             // Get OpenAPI specification
             JObject openApiSpec;
+            bool isResolved = false;
             if (!string.IsNullOrEmpty(request.OpenApiSchema?.Url))
             {
-                // FetchOpenApiSpecFromUrlAsync now returns a fully resolved JObject
-                // All $ref references are already resolved, avoiding double resolution
-                openApiSpec = await FetchOpenApiSpecFromUrlAsync(request.OpenApiSchema.Url, request.OpenApiSchema.Authentication, cancellationToken);
+                // Fetch OpenAPI spec but defer resolution until we know we need it
+                // This avoids expensive resolution when we're only validating spec structure
+                // or when most endpoints won't be tested
+                openApiSpec = await FetchOpenApiSpecFromUrlAsync(request.OpenApiSchema.Url, request.OpenApiSchema.Authentication, cancellationToken, resolveReferences: false);
             }
             else
             {
@@ -95,6 +97,16 @@ public class OpenApiValidationService : IOpenApiValidationService
             List<EndpointTestResult> endpointTests = new();
             if (request.Options.TestEndpoints && !string.IsNullOrEmpty(request.BaseUrl))
             {
+                // Resolve references now that we know we're actually testing endpoints
+                // This lazy approach avoids wasting resolution work when endpoints aren't tested
+                if (!isResolved)
+                {
+                    _logger.LogDebug("Resolving OpenAPI document references for endpoint testing");
+                    var resolvedContent = await _schemaResolverService.ResolveAsync(openApiSpec.ToString(), request.OpenApiSchema?.Url, request.OpenApiSchema?.Authentication);
+                    openApiSpec = JObject.Parse(resolvedContent);
+                    isResolved = true;
+                }
+                
                 endpointTests = await TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, request.DataSourceAuth, request.OpenApiSchema?.Url, cancellationToken);
                 result.EndpointTests = endpointTests;
             }
@@ -1070,7 +1082,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         return errors;
     }
 
-    private async Task<JObject> FetchOpenApiSpecFromUrlAsync(string specUrl, DataSourceAuthentication? auth, CancellationToken cancellationToken)
+    private async Task<JObject> FetchOpenApiSpecFromUrlAsync(string specUrl, DataSourceAuthentication? auth, CancellationToken cancellationToken, bool resolveReferences = true)
     {
         try
         {
@@ -1095,13 +1107,17 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            // Use SchemaResolverService to resolve all $ref references in the OpenAPI document
-            // This resolves references once and returns the complete document as a string
-            var resolvedContent = await _schemaResolverService.ResolveAsync(content, specUrl, auth);
+            // Only resolve references if requested (lazy evaluation)
+            // This avoids expensive resolution when we're only validating spec structure
+            // or when endpoints won't be tested
+            if (resolveReferences)
+            {
+                var resolvedContent = await _schemaResolverService.ResolveAsync(content, specUrl, auth);
+                return JObject.Parse(resolvedContent);
+            }
             
-            // Parse the resolved document to JObject for further processing
-            // All $ref references are already resolved, so schemas can be used directly
-            return JObject.Parse(resolvedContent);
+            // Return unresolved document for spec validation or later lazy resolution
+            return JObject.Parse(content);
         }
         catch (Exception ex)
         {
