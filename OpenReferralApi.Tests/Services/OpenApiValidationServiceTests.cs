@@ -704,8 +704,7 @@ public class OpenApiValidationServiceTests
             },
             Options = new OpenApiValidationOptions
             {
-                TestEndpoints = true,
-                SkipAuthentication = false
+                TestEndpoints = true
             }
         };
 
@@ -757,8 +756,7 @@ public class OpenApiValidationServiceTests
             },
             Options = new OpenApiValidationOptions
             {
-                TestEndpoints = true,
-                SkipAuthentication = false
+                TestEndpoints = true
             }
         };
 
@@ -809,8 +807,7 @@ public class OpenApiValidationServiceTests
             },
             Options = new OpenApiValidationOptions
             {
-                TestEndpoints = true,
-                SkipAuthentication = false
+                TestEndpoints = true
             }
         };
 
@@ -866,8 +863,7 @@ public class OpenApiValidationServiceTests
             },
             Options = new OpenApiValidationOptions
             {
-                TestEndpoints = true,
-                SkipAuthentication = false
+                TestEndpoints = true
             }
         };
 
@@ -928,8 +924,7 @@ public class OpenApiValidationServiceTests
             },
             Options = new OpenApiValidationOptions
             {
-                TestEndpoints = true,
-                SkipAuthentication = false
+                TestEndpoints = true
             }
         };
 
@@ -988,8 +983,7 @@ public class OpenApiValidationServiceTests
             },
             Options = new OpenApiValidationOptions
             {
-                TestEndpoints = true,
-                SkipAuthentication = false
+                TestEndpoints = true
             }
         };
 
@@ -1006,7 +1000,7 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_WithSkipAuthenticationTrue_DoesNotAddHeaders()
+    public async Task ValidateOpenApiSpecificationAsync_WithoutDataSourceAuth_DoesNotAddHeaders()
     {
         // Arrange
         var json = CreateOpenApi30Spec();
@@ -1037,15 +1031,10 @@ public class OpenApiValidationServiceTests
                 Url = "https://example.com/openapi.json"
             },
             BaseUrl = "https://api.example.com",
-            DataSourceAuth = new DataSourceAuthentication
-            {
-                ApiKey = "should-not-be-added",
-                BearerToken = "also-should-not-be-added"
-            },
+            DataSourceAuth = null,  // No authentication provided
             Options = new OpenApiValidationOptions
             {
-                TestEndpoints = true,
-                SkipAuthentication = true  // Authentication should be skipped
+                TestEndpoints = true
             }
         };
 
@@ -1093,8 +1082,7 @@ public class OpenApiValidationServiceTests
             DataSourceAuth = new DataSourceAuthentication(),  // Empty auth data
             Options = new OpenApiValidationOptions
             {
-                TestEndpoints = true,
-                SkipAuthentication = false
+                TestEndpoints = true
             }
         };
 
@@ -1148,8 +1136,7 @@ public class OpenApiValidationServiceTests
             },
             Options = new OpenApiValidationOptions
             {
-                TestEndpoints = true,
-                SkipAuthentication = false
+                TestEndpoints = true
             }
         };
 
