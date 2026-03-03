@@ -442,6 +442,7 @@ public class JsonValidatorService : IJsonValidatorService
     /// <summary>
     /// Detects fields in the JSON data that are not defined in the schema.
     /// Returns a list of validation warnings for each additional field found.
+    /// Removes the prefix up to the first "." and returns only unique results.
     /// </summary>
     private List<ValidationError> DetectAdditionalFields(string jsonData, JSchema schema)
     {
@@ -451,6 +452,21 @@ public class JsonValidatorService : IJsonValidatorService
         {
             var jsonToken = JToken.Parse(jsonData);
             DetectAdditionalFieldsRecursive(jsonToken, schema, "", warnings);
+            
+            // Remove prefix up to first "." and return only unique results
+            var uniqueWarnings = new Dictionary<string, ValidationError>();
+            
+            foreach (var warning in warnings)
+            {
+                var pathAfterPrefix = ExtractPathAfterFirstDot(warning.Path);
+                if (!uniqueWarnings.ContainsKey(pathAfterPrefix))
+                {
+                    warning.Path = pathAfterPrefix;
+                    uniqueWarnings[pathAfterPrefix] = warning;
+                }
+            }
+            
+            return uniqueWarnings.Values.ToList();
         }
         catch (Exception ex)
         {
@@ -515,6 +531,15 @@ public class JsonValidatorService : IJsonValidatorService
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Extracts the path after the first dot, removing any prefix like "content" or "contents".
+    /// </summary>
+    private string ExtractPathAfterFirstDot(string path)
+    {
+        var dotIndex = path.IndexOf('.');
+        return dotIndex >= 0 ? path.Substring(dotIndex + 1) : path;
     }
 
 }
