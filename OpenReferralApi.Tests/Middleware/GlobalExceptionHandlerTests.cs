@@ -3,7 +3,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenReferralApi.Middleware;
-using System.Text.Json;
 
 namespace OpenReferralApi.Tests.Middleware;
 

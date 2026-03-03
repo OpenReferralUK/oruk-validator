@@ -1,4 +1,3 @@
-using System;
 using System.Net;
 using Microsoft.Extensions.Logging;
 using OpenReferralApi.Core.Models;
