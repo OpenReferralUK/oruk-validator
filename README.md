@@ -130,9 +130,6 @@ Use API keys passed via HTTP headers (default header: `X-API-Key`):
   "dataSourceAuth": {
     "apiKey": "your-api-key-here",
     "apiKeyHeader": "X-API-Key"
-  },
-  "options": {
-    "skipAuthentication": false
   }
 }
 ```
@@ -151,9 +148,6 @@ Use bearer tokens for OAuth 2.0 or JWT-based authentication:
   "baseUrl": "https://api.example.com",
   "dataSourceAuth": {
     "bearerToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  },
-  "options": {
-    "skipAuthentication": false
   }
 }
 ```
@@ -175,9 +169,6 @@ Use HTTP Basic Authentication with username and password:
       "username": "your-username",
       "password": "your-password"
     }
-  },
-  "options": {
-    "skipAuthentication": false
   }
 }
 ```
@@ -200,9 +191,6 @@ Add any custom HTTP headers required by your API:
       "X-Request-Id": "req-456",
       "X-Custom-Auth": "custom-value"
     }
-  },
-  "options": {
-    "skipAuthentication": false
   }
 }
 ```
@@ -225,26 +213,11 @@ You can combine multiple authentication methods in a single request:
       "X-Client-Id": "client-123",
       "X-Tenant-Id": "tenant-456"
     }
-  },
-  "options": {
-    "skipAuthentication": false
   }
 }
 ```
 
 All specified authentication methods will be applied to endpoint requests.
-
-### Skipping Authentication
-
-By default, authentication is skipped (`skipAuthentication: true`) to allow testing public endpoints. To enable authentication for protected endpoints, explicitly set `skipAuthentication: false`:
-
-```json
-{
-  "options": {
-    "skipAuthentication": false
-  }
-}
-```
 
 ### Security Considerations
 
@@ -266,7 +239,6 @@ curl -X POST http://localhost:5000/api/validate/openapi \
       "bearerToken": "your-jwt-token-here"
     },
     "options": {
-      "skipAuthentication": false,
       "testEndpoints": true,
       "validateSpecification": true,
       "timeoutSeconds": 30,

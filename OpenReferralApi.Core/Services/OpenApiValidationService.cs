@@ -912,8 +912,8 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             using var request = new HttpRequestMessage(new HttpMethod(method), url);
 
-            // Apply authentication if not skipped and auth is provided
-            if (!options.SkipAuthentication && authentication != null)
+            // Apply authentication if provided
+            if (authentication != null)
             {
                 ApplyAuthenticationHeaders(request, authentication);
             }
