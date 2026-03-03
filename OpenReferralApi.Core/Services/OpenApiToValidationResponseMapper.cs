@@ -1,4 +1,3 @@
-using System.Net;
 using OpenReferralApi.Core.Models;
 
 namespace OpenReferralApi.Core.Services;
