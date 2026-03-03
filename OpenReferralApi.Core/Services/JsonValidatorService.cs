@@ -442,7 +442,7 @@ public class JsonValidatorService : IJsonValidatorService
     /// <summary>
     /// Detects fields in the JSON data that are not defined in the schema.
     /// Returns a list of validation warnings for each additional field found.
-    /// Removes the prefix up to the first "." and returns only unique results.
+    /// Normalizes optional wrapper prefixes (for example "content.") and returns only unique results.
     /// </summary>
     private List<ValidationError> DetectAdditionalFields(string jsonData, JSchema schema)
     {
@@ -458,11 +458,11 @@ public class JsonValidatorService : IJsonValidatorService
             
             foreach (var warning in warnings)
             {
-                var pathAfterPrefix = ExtractPathAfterFirstDot(warning.Path);
-                if (!uniqueWarnings.ContainsKey(pathAfterPrefix))
+                var normalizedPath = NormalizeAdditionalFieldPath(warning.Path);
+                if (!uniqueWarnings.ContainsKey(normalizedPath))
                 {
-                    warning.Path = pathAfterPrefix;
-                    uniqueWarnings[pathAfterPrefix] = warning;
+                    warning.Path = normalizedPath;
+                    uniqueWarnings[normalizedPath] = warning;
                 }
             }
             
@@ -534,12 +534,21 @@ public class JsonValidatorService : IJsonValidatorService
     }
 
     /// <summary>
-    /// Extracts the path after the first dot, removing any prefix like "content" or "contents".
+    /// Removes known top-level wrapper prefixes while preserving valid nested field paths.
     /// </summary>
-    private string ExtractPathAfterFirstDot(string path)
+    private string NormalizeAdditionalFieldPath(string path)
     {
-        var dotIndex = path.IndexOf('.');
-        return dotIndex >= 0 ? path.Substring(dotIndex + 1) : path;
+        if (path.StartsWith("content.", StringComparison.Ordinal))
+        {
+            return path.Substring("content.".Length);
+        }
+
+        if (path.StartsWith("contents.", StringComparison.Ordinal))
+        {
+            return path.Substring("contents.".Length);
+        }
+
+        return path;
     }
 
 }
