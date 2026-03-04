@@ -318,12 +318,9 @@ public class OpenApiValidationService : IOpenApiValidationService
                 };
 
                 var schemaValidation = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
-                if (!schemaValidation.IsValid)
+                if (schemaValidation.Errors.Any())
                 {
-                    foreach (var error in schemaValidation.Errors)
-                    {
-                        errors.Add(error);
-                    }
+                    errors.AddRange(schemaValidation.Errors);
                 }
 
                 // Log which schema was used for validation
@@ -359,8 +356,8 @@ public class OpenApiValidationService : IOpenApiValidationService
             });
         }
 
-        validation.IsValid = !errors.Any();
-        validation.Errors = errors;
+        validation.Errors = NormalizeAndDeduplicateValidationErrors(errors);
+        validation.IsValid = !validation.Errors.Any();
 
         _logger.LogInformation("OpenAPI specification validation completed. IsValid: {IsValid}, Errors: {ErrorCount}",
             validation.IsValid, validation.Errors.Count);
@@ -613,6 +610,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                         result.Status = testResult.IsSuccess ? "Success" : "Failed";
                     }
                 }
+
+                NormalizeValidationResultErrors(testResult.ValidationResult);
             }
         }
         catch (Exception ex)
@@ -678,6 +677,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     ErrorCode = "OPTIONAL_ENDPOINT_NON_SUCCESS",
                     Severity = "Warning"
                 });
+                NormalizeValidationResultErrors(firstPageResult.ValidationResult);
                 result.Status = "Warning";
             }
             else
@@ -689,6 +689,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     ErrorCode = "REQUIRED_ENDPOINT_FAILED",
                     Severity = "Error"
                 });
+                NormalizeValidationResultErrors(firstPageResult.ValidationResult);
                 result.Status = "Failed";
             }
             return;
@@ -713,6 +714,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 ErrorCode = "EMPTY_FEED_WARNING",
                 Severity = "Warning"
             });
+            NormalizeValidationResultErrors(firstPageResult.ValidationResult);
             firstPageResult.ValidationResult.IsValid = false;
             _logger.LogWarning("Paginated endpoint {Path} returned empty feed (0 items)", path);
             return; // No further pagination testing needed for empty feeds
@@ -1018,6 +1020,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                                     };
                                     var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
                                     testResult.ValidationResult = validationResult;
+                                    NormalizeValidationResultErrors(testResult.ValidationResult);
                                 }
                             }
                         }
@@ -1029,6 +1032,60 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             _logger.LogWarning(ex, "Could not validate response for {Url}", testResult.RequestUrl);
         }
+    }
+
+    private static void NormalizeValidationResultErrors(ValidationResult? validationResult)
+    {
+        if (validationResult?.Errors == null || validationResult.Errors.Count == 0)
+        {
+            return;
+        }
+
+        validationResult.Errors = NormalizeAndDeduplicateValidationErrors(validationResult.Errors);
+    }
+
+    private static List<ValidationError> NormalizeAndDeduplicateValidationErrors(IEnumerable<ValidationError> errors)
+    {
+        var uniqueErrors = new Dictionary<string, ValidationError>(StringComparer.Ordinal);
+
+        foreach (var error in errors)
+        {
+            var normalizedPath = NormalizeValidationErrorText(error.Path);
+            var normalizedMessage = NormalizeValidationErrorText(error.Message);
+
+            var normalizedError = new ValidationError
+            {
+                Path = normalizedPath,
+                Message = normalizedMessage,
+                ErrorCode = error.ErrorCode,
+                Severity = error.Severity,
+                LineNumber = error.LineNumber,
+                ColumnNumber = error.ColumnNumber
+            };
+
+            var key = BuildValidationErrorDeduplicationKey(normalizedError);
+            if (!uniqueErrors.ContainsKey(key))
+            {
+                uniqueErrors[key] = normalizedError;
+            }
+        }
+
+        return uniqueErrors.Values.ToList();
+    }
+
+    private static string BuildValidationErrorDeduplicationKey(ValidationError error)
+    {
+        return $"{error.Severity}|{error.ErrorCode}|{error.Path}|{error.Message}";
+    }
+
+    private static string NormalizeValidationErrorText(string? input)
+    {
+        if (string.IsNullOrEmpty(input))
+        {
+            return string.Empty;
+        }
+
+        return Regex.Replace(input, @"\[[^\]]*\]", "");
     }
 
     /// <summary>
@@ -1998,7 +2055,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // Return a NotTested result instead of falling back to default values
-            return new EndpointTestResult
+            var notTestedResult = new EndpointTestResult
             {
                 Path = path,
                 Method = method,
@@ -2030,6 +2087,9 @@ public class OpenApiValidationService : IOpenApiValidationService
                     }
                 }
             };
+
+            NormalizeValidationResultErrors(notTestedResult.TestResults.FirstOrDefault()?.ValidationResult);
+            return notTestedResult;
         }
     }
 

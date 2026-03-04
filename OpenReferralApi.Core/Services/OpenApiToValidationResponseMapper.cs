@@ -96,13 +96,13 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
         // If a specific test is provided (first failed), use only that one
         var testsToProcess = specificTest != null 
             ? new[] { specificTest } 
-            : endpoint.TestResults.Where(tr => tr.ValidationResult != null && !tr.ValidationResult.IsValid).Take(1);
+            : endpoint.TestResults.Where(tr => tr.ValidationResult != null && !tr.ValidationResult.IsValid);
             
         foreach (var testResult in testsToProcess)
         {
             if (testResult.ValidationResult != null && !testResult.ValidationResult.IsValid)
             {
-                foreach (var validationError in testResult.ValidationResult.Errors.Take(1))
+                foreach (var validationError in testResult.ValidationResult.Errors)
                 {
                     messages.Add(new
                     {

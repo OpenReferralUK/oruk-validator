@@ -251,6 +251,121 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_NormalizesAndDeduplicatesSpecificationValidationErrorsAndWarnings()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false }
+        };
+
+        _jsonValidatorServiceMock
+            .Setup(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = false,
+                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                {
+                    new()
+                    {
+                        Path = "paths./items[0].name",
+                        Message = "paths./items[0].name is required",
+                        ErrorCode = "VALIDATION_ERROR",
+                        Severity = "Error"
+                    },
+                    new()
+                    {
+                        Path = "paths./items[1].name",
+                        Message = "paths./items[1].name is required",
+                        ErrorCode = "VALIDATION_ERROR",
+                        Severity = "Error"
+                    },
+                    new()
+                    {
+                        Path = "paths./items[0].metadata",
+                        Message = "paths./items[0].metadata is not expected",
+                        ErrorCode = "VALIDATION_WARNING",
+                        Severity = "Warning"
+                    },
+                    new()
+                    {
+                        Path = "paths./items[2].metadata",
+                        Message = "paths./items[2].metadata is not expected",
+                        ErrorCode = "VALIDATION_WARNING",
+                        Severity = "Warning"
+                    }
+                }
+            });
+
+        SetupHttpMock(json);
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+        var errors = result.SpecificationValidation!.Errors;
+
+        // Assert
+        Assert.That(errors, Has.Count.EqualTo(2));
+        Assert.That(errors.All(e => !e.Path.Contains("[")), Is.True);
+        Assert.That(errors.All(e => !e.Message.Contains("[")), Is.True);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_DeduplicationRetainsDistinctSeverityOrErrorCode()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false }
+        };
+
+        _jsonValidatorServiceMock
+            .Setup(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = false,
+                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                {
+                    new()
+                    {
+                        Path = "items[0].name",
+                        Message = "items[0].name is required",
+                        ErrorCode = "VALIDATION_ERROR",
+                        Severity = "Error"
+                    },
+                    new()
+                    {
+                        Path = "items[1].name",
+                        Message = "items[1].name is required",
+                        ErrorCode = "VALIDATION_WARNING",
+                        Severity = "Warning"
+                    }
+                }
+            });
+
+        SetupHttpMock(json);
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+        var errors = result.SpecificationValidation!.Errors;
+
+        // Assert
+        Assert.That(errors, Has.Count.EqualTo(2), "Distinct severity/code entries should not be collapsed");
+        Assert.That(errors.Count(e => e.Path == "items.name"), Is.EqualTo(2));
+        Assert.That(errors.Any(e => e.Severity == "Error" && e.ErrorCode == "VALIDATION_ERROR"), Is.True);
+        Assert.That(errors.Any(e => e.Severity == "Warning" && e.ErrorCode == "VALIDATION_WARNING"), Is.True);
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_UsesDefaultOptionsWhenNull()
     {
         // Arrange
@@ -573,6 +688,162 @@ public class OpenApiValidationServiceTests
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors,
             Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_NormalizesAndDeduplicatesEndpointValidationErrorsAndWarnings()
+    {
+        // Arrange
+        var json = CreateOpenApi30SpecWithResponseSchema();
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = true
+            }
+        };
+
+        _jsonValidatorServiceMock
+            .Setup(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = false,
+                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                {
+                    new()
+                    {
+                        Path = "data[0].name",
+                        Message = "data[0].name is required",
+                        ErrorCode = "VALIDATION_ERROR",
+                        Severity = "Error"
+                    },
+                    new()
+                    {
+                        Path = "data[1].name",
+                        Message = "data[1].name is required",
+                        ErrorCode = "VALIDATION_ERROR",
+                        Severity = "Error"
+                    },
+                    new()
+                    {
+                        Path = "data[0].extra",
+                        Message = "data[0].extra is not expected",
+                        ErrorCode = "VALIDATION_WARNING",
+                        Severity = "Warning"
+                    },
+                    new()
+                    {
+                        Path = "data[4].extra",
+                        Message = "data[4].extra is not expected",
+                        ErrorCode = "VALIDATION_WARNING",
+                        Severity = "Warning"
+                    }
+                }
+            });
+
+        SetupHttpMock(json, endpointResponseBody: "[{\"name\":\"a\"},{\"name\":\"b\"}]");
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+        var errors = result.EndpointTests[0].TestResults[0].ValidationResult!.Errors;
+
+        // Assert
+        Assert.That(errors, Has.Count.EqualTo(2));
+        Assert.That(errors.All(e => !e.Path.Contains("[")), Is.True);
+        Assert.That(errors.All(e => !e.Message.Contains("[")), Is.True);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_EndpointValidation_DoesNotDeduplicateDifferentNormalizedMessages()
+    {
+        // Arrange
+        var json = CreateOpenApi30SpecWithResponseSchema();
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = true
+            }
+        };
+
+        _jsonValidatorServiceMock
+            .Setup(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = false,
+                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                {
+                    new()
+                    {
+                        Path = "data[0]",
+                        Message = "data[0] should be object",
+                        ErrorCode = "VALIDATION_ERROR",
+                        Severity = "Error"
+                    },
+                    new()
+                    {
+                        Path = "data[0]",
+                        Message = "data[0] missing required property 'name'",
+                        ErrorCode = "VALIDATION_ERROR",
+                        Severity = "Error"
+                    }
+                }
+            });
+
+        SetupHttpMock(json, endpointResponseBody: "[{\"name\":\"a\"}]");
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+        var errors = result.EndpointTests[0].TestResults[0].ValidationResult!.Errors;
+
+        // Assert
+        Assert.That(errors, Has.Count.EqualTo(2));
+        Assert.That(errors.All(e => e.Path == "data"), Is.True);
+        Assert.That(errors.Select(e => e.Message).Distinct().Count(), Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_NoIdsAvailableWarning_IsNormalized()
+    {
+        // Arrange
+        var json = CreateOpenApi30ParameterizedOnlySpecWithIndexedPath();
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = true
+            }
+        };
+
+        SetupHttpMock(json);
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+        var warning = result.EndpointTests[0].TestResults[0].ValidationResult!.Errors
+            .First(e => e.ErrorCode == "NO_IDS_AVAILABLE");
+
+        // Assert
+        Assert.That(result.EndpointTests[0].Status, Is.EqualTo("NotTested"));
+        Assert.That(warning.Path.Contains("["), Is.False, "Path should be normalized");
+        Assert.That(warning.Message.Contains("["), Is.False, "Message should be normalized");
     }
 
     [Test]
@@ -1208,6 +1479,61 @@ public class OpenApiValidationServiceTests
             },
             ""paths"": {
                 ""/test"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
+    private string CreateOpenApi30SpecWithResponseSchema()
+    {
+        return @"{
+            ""openapi"": ""3.0.0"",
+            ""info"": {
+                ""title"": ""Test API"",
+                ""version"": ""1.0.0""
+            },
+            ""paths"": {
+                ""/test"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": {
+                                ""description"": ""OK"",
+                                ""content"": {
+                                    ""application/json"": {
+                                        ""schema"": {
+                                            ""type"": ""array"",
+                                            ""items"": {
+                                                ""type"": ""object"",
+                                                ""properties"": {
+                                                    ""name"": { ""type"": ""string"" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
+    private string CreateOpenApi30ParameterizedOnlySpecWithIndexedPath()
+    {
+        return @"{
+            ""openapi"": ""3.0.0"",
+            ""info"": {
+                ""title"": ""Test API"",
+                ""version"": ""1.0.0""
+            },
+            ""paths"": {
+                ""/items[0]/{id}"": {
                     ""get"": {
                         ""responses"": {
                             ""200"": { ""description"": ""OK"" }
