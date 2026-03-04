@@ -532,7 +532,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 result.IsTested = true;
 
                 // Check for non-success status codes and handle based on endpoint requirements
-                if (!testResult.IsSuccess)
+                if (!testResult.IsSuccessStatusCode)
                 {
                     var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
                     var statusCode = testResult.ResponseStatusCode ?? 0;
@@ -585,7 +585,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 }
 
                 // Validate response if schema is defined
-                if (testResult.IsSuccess && testResult.ResponseBody != null)
+                if (testResult.IsSuccessStatusCode && testResult.ResponseBody != null)
                 {
                     await ValidateResponseAsync(testResult, operation, openApiDocument, documentUri, options, cancellationToken);
                     result.Status = testResult.ValidationResult != null && testResult.ValidationResult.IsValid ? "Success" : "Failed";
@@ -604,12 +604,12 @@ public class OpenApiValidationService : IOpenApiValidationService
                         }
                         else if (result.Status != "Warning")
                         {
-                            result.Status = testResult.IsSuccess ? "Success" : "Warning";
+                            result.Status = testResult.IsSuccessStatusCode ? "Success" : "Warning";
                         }
                     }
                     else if (result.Status != "Warning" && result.Status != "Failed")
                     {
-                        result.Status = testResult.IsSuccess ? "Success" : "Failed";
+                        result.Status = testResult.IsSuccessStatusCode ? "Success" : "Failed";
                     }
                 }
 
@@ -623,7 +623,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             {
                 RequestUrl = $"{baseUrl}{path}",
                 RequestMethod = method,
-                IsSuccess = false,
+                IsSuccessStatusCode = false,
                 ErrorMessage = ex.Message,
                 ResponseTime = TimeSpan.Zero
             });
@@ -665,7 +665,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         var firstPageResult = await ExecuteHttpRequestAsync(firstPageUrl, method, operation, options, auth, cancellationToken);
         result.TestResults.Add(firstPageResult);
 
-        if (!firstPageResult.IsSuccess)
+        if (!firstPageResult.IsSuccessStatusCode)
         {
             var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
             var statusCode = firstPageResult.ResponseStatusCode ?? 0;
@@ -736,7 +736,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 var middlePageResult = await ExecuteHttpRequestAsync(middlePageUrl, method, operation, options, auth, cancellationToken);
                 result.TestResults.Add(middlePageResult);
 
-                if (middlePageResult.IsSuccess && middlePageResult.ResponseBody != null)
+                if (middlePageResult.IsSuccessStatusCode && middlePageResult.ResponseBody != null)
                 {
                     await ValidateResponseAsync(middlePageResult, operation, openApiDocument, documentUri, options, cancellationToken);
                 }
@@ -748,7 +748,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             var lastPageResult = await ExecuteHttpRequestAsync(lastPageUrl, method, operation, options, auth, cancellationToken);
             result.TestResults.Add(lastPageResult);
 
-            if (lastPageResult.IsSuccess && lastPageResult.ResponseBody != null)
+            if (lastPageResult.IsSuccessStatusCode && lastPageResult.ResponseBody != null)
             {
                 await ValidateResponseAsync(lastPageResult, operation, openApiDocument, documentUri, options, cancellationToken);
             }
@@ -956,7 +956,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             // Populate basic result fields
             testResult.ResponseTime = timeToHeaders + contentTransferStopwatch.Elapsed;
             testResult.ResponseStatusCode = (int)response.StatusCode;
-            testResult.IsSuccess = response.IsSuccessStatusCode;
+            testResult.IsSuccessStatusCode = response.IsSuccessStatusCode;
             testResult.ResponseBody = responseBody;
 
             // Populate performance metrics (include best-effort DNS/TCP/TLS measurements if available)
@@ -973,7 +973,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             stopwatch.Stop();
             testResult.ResponseTime = stopwatch.Elapsed;
-            testResult.IsSuccess = false;
+            testResult.IsSuccessStatusCode = false;
             testResult.ErrorMessage = ex.Message;
         }
 
@@ -1913,10 +1913,10 @@ public class OpenApiValidationService : IOpenApiValidationService
         var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, documentUri, pathItem, cancellationToken);
 
         // Extract IDs from successful GET responses for dependency testing
-        if (method == "GET" && result.TestResults.Any(r => r.IsSuccess && !string.IsNullOrEmpty(r.ResponseBody)))
+        if (method == "GET" && result.TestResults.Any(r => r.IsSuccessStatusCode && !string.IsNullOrEmpty(r.ResponseBody)))
         {
             var rootPath = EndpointInfo.GetRootPath(path);
-            var successfulResponse = result.TestResults.First(r => r.IsSuccess);
+            var successfulResponse = result.TestResults.First(r => r.IsSuccessStatusCode);
 
             _logger.LogInformation("Processing HTTP response from {Url} (Status: {StatusCode}, ResponseSize: {Size} chars)",
                 successfulResponse.RequestUrl, successfulResponse.ResponseStatusCode,
@@ -2075,7 +2075,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 IsTested = false,
                 TestResults = new List<HttpTestResult>(){
                     new() {
-                        IsSuccess = false,
+                        IsSuccessStatusCode = false,
                         RequestUrl = $"{baseUrl}{path}",
                         ErrorMessage = "No extracted IDs available for parameter substitution. Endpoint was not tested.",
                         ValidationResult= new ValidationResult

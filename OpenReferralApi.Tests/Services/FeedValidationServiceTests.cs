@@ -91,7 +91,7 @@ public class FeedValidationServiceTests
                     Method = "GET",
                     TestResults = new List<HttpTestResult>
                     {
-                        new HttpTestResult { IsSuccess = true }
+                        new HttpTestResult { IsSuccessStatusCode = true }
                     }
                 }
             }
@@ -141,7 +141,7 @@ public class FeedValidationServiceTests
                     {
                         new HttpTestResult
                         {
-                            IsSuccess = true,
+                            IsSuccessStatusCode = true,
                             ValidationResult = new ValidationResult
                             {
                                 IsValid = false,

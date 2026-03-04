@@ -172,7 +172,7 @@ public class FeedValidationService : IFeedValidationService
       // IsUp is true if any endpoint test result was successful
       result.IsUp = validationResult.EndpointTests
           .SelectMany(e => e.TestResults)
-          .Any(tr => tr.IsSuccess);
+          .Any(tr => tr.IsSuccessStatusCode);
       result.IsValid = validationResult.IsValid;
       result.ResponseTimeMs = validationResult.Duration.TotalMilliseconds;
       

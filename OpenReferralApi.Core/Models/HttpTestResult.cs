@@ -7,6 +7,14 @@ namespace OpenReferralApi.Core.Models;
 /// </summary>
 public class HttpTestResult
 {
+
+    /// <summary>
+    /// The specific ID value used for testing parameterized endpoints
+    /// Only populated when testing endpoints with path parameters like /services/{id}
+    /// </summary>
+    [JsonProperty("testedId")]
+    public string? TestedId { get; set; }
+
     /// <summary>
     /// The complete URL that was requested during testing, including query parameters
     /// Useful for debugging and reproducing test scenarios
@@ -28,6 +36,14 @@ public class HttpTestResult
     [JsonProperty("requestBody")]
     public string? RequestBody { get; set; }
 
+
+    /// <summary>
+    /// Total time taken for the complete request-response cycle
+    /// Critical for performance analysis and SLA compliance monitoring
+    /// </summary>
+    [JsonProperty("responseTime")]
+    public TimeSpan ResponseTime { get; set; }
+    
     /// <summary>
     /// HTTP status code returned by the server (200, 404, 500, etc.)
     /// Indicates whether the request was successful and how the server responded
@@ -36,31 +52,17 @@ public class HttpTestResult
     public int? ResponseStatusCode { get; set; }
 
     /// <summary>
-    /// The response body content returned by the server
-    /// Contains the actual data returned by the API endpoint
+    /// Whether the HTTP request was considered successful based on status code and expectations
+    /// Typically true for 2xx status codes, but may vary based on testing configuration
     /// </summary>
-    [JsonProperty("responseBody")]
-    public string? ResponseBody { get; set; }
-
-    /// <summary>
-    /// Total time taken for the complete request-response cycle
-    /// Critical for performance analysis and SLA compliance monitoring
-    /// </summary>
-    [JsonProperty("responseTime")]
-    public TimeSpan ResponseTime { get; set; }
+    [JsonProperty("isSuccessStatusCode")]
+    public bool IsSuccessStatusCode { get; set; }
 
     /// <summary>
     /// Detailed performance metrics for this specific HTTP request/response
     /// </summary>
     [JsonProperty("performanceMetrics")]
     public EndpointPerformanceMetrics? PerformanceMetrics { get; set; }
-
-    /// <summary>
-    /// Whether the HTTP request was considered successful based on status code and expectations
-    /// Typically true for 2xx status codes, but may vary based on testing configuration
-    /// </summary>
-    [JsonProperty("isSuccess")]
-    public bool IsSuccess { get; set; }
 
     /// <summary>
     /// Error message if the request failed or encountered issues
@@ -70,11 +72,11 @@ public class HttpTestResult
     public string? ErrorMessage { get; set; }
 
     /// <summary>
-    /// The specific ID value used for testing parameterized endpoints
-    /// Only populated when testing endpoints with path parameters like /services/{id}
+    /// The response body content returned by the server
+    /// Contains the actual data returned by the API endpoint
     /// </summary>
-    [JsonProperty("testedId")]
-    public string? TestedId { get; set; }
+    [JsonProperty("responseBody")]
+    public string? ResponseBody { get; set; }
 
     /// <summary>
     /// Results from validating the response against the OpenAPI specification
