@@ -67,3 +67,5 @@ results*.json
 # AI-generated documentation
 docs/
 logs/
+
+.docs
