@@ -36,6 +36,7 @@ jobs:
   # --- JOB 2: BUILD AND TEST ---
   build-and-test:
     name: Build and Test (.NET)
+    needs: staging-to-main-enforcement
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
