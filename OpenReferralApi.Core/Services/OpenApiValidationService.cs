@@ -327,7 +327,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                 // Log which schema was used for validation
                 var dialectInfo = specObject.ContainsKey("jsonSchemaDialect")
-                    ? $"using jsonSchemaDialect: {specObject["jsonSchemaDialect"]}"
+                    ? $"using jsonSchemaDialect: {SchemaResolverService.SanitizeStringForLogging(specObject["jsonSchemaDialect"]?.ToString() ?? string.Empty)}"
                     : $"using version-based schema for OpenAPI {validation.OpenApiVersion}";
                 _logger.LogDebug("Validated OpenAPI specification {DialogInfo} with schema URI: {SchemaUri}", dialectInfo, schemaUri);
             }
@@ -513,9 +513,9 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // Check if this endpoint has pagination support
-            _logger.LogDebug("Checking pagination support for {Method} {Path}", method, path);
+            _logger.LogDebug("Checking pagination support for {Method} {Path}", SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
             bool hasPagination = method == "GET" && HasPageParameter(resolvedParams);
-            _logger.LogInformation("{Method} {Path}: hasPagination={HasPagination}", method, path, hasPagination);
+            _logger.LogInformation("{Method} {Path}: hasPagination={HasPagination}", SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path), hasPagination);
 
             if (hasPagination)
             {
@@ -618,7 +618,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error testing endpoint {Method} {Path}", method, path);
+            _logger.LogError(ex, "Error testing endpoint {Method} {Path}", SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
             result.TestResults.Add(new HttpTestResult
             {
                 RequestUrl = $"{baseUrl}{path}",
@@ -655,7 +655,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         JObject pathItem,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Testing paginated endpoint: {Method} {Path}", method, path);
+        _logger.LogInformation("Testing paginated endpoint: {Method} {Path}", SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
 
         result.IsTested = true;
 
@@ -852,7 +852,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             {
                 var name = paramObj["name"]?.ToString();
                 var inLocation = paramObj["in"]?.ToString();
-                _logger.LogDebug("Checking param: name={Name}, in={In}", name, inLocation);
+                _logger.LogDebug("Checking param: name={Name}, in={In}", SchemaResolverService.SanitizeStringForLogging(name ?? string.Empty), SchemaResolverService.SanitizeStringForLogging(inLocation ?? string.Empty));
 
                 if (name?.Equals("page", StringComparison.OrdinalIgnoreCase) == true &&
                     inLocation?.Equals("query", StringComparison.OrdinalIgnoreCase) == true)
@@ -881,7 +881,11 @@ public class OpenApiValidationService : IOpenApiValidationService
             foreach (var param in pathParams)
             {
                 resolvedParams.Add(param);
-                _logger.LogDebug("Path-level param: {Param}", param.ToString());
+                if (param is JObject paramObj)
+                {
+                    var paramName = paramObj["name"]?.ToString();
+                    _logger.LogDebug("Path-level param: {Name}", SchemaResolverService.SanitizeStringForLogging(paramName ?? string.Empty));
+                }
             }
         }
 
@@ -892,7 +896,11 @@ public class OpenApiValidationService : IOpenApiValidationService
             foreach (var param in operationParams)
             {
                 resolvedParams.Add(param);
-                _logger.LogDebug("Operation-level param: {Param}", param.ToString());
+                if (param is JObject paramObj)
+                {
+                    var paramName = paramObj["name"]?.ToString();
+                    _logger.LogDebug("Operation-level param: {Name}", SchemaResolverService.SanitizeStringForLogging(paramName ?? string.Empty));
+                }
             }
         }
 

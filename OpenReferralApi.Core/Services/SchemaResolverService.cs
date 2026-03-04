@@ -197,7 +197,7 @@ public class SchemaResolverService : ISchemaResolverService
     if (!string.IsNullOrEmpty(auth.ApiKey))
     {
       request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
-      _logger.LogDebug("Applied API Key authentication with header: {Header}", auth.ApiKeyHeader);
+      _logger.LogDebug("Applied API Key authentication with header: {Header}", SchemaResolverService.SanitizeStringForLogging(auth.ApiKeyHeader));
     }
 
     // Apply Bearer Token authentication
@@ -213,7 +213,7 @@ public class SchemaResolverService : ISchemaResolverService
       var credentials = Convert.ToBase64String(
         System.Text.Encoding.ASCII.GetBytes($"{auth.BasicAuth.Username}:{auth.BasicAuth.Password}"));
       request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
-      _logger.LogDebug("Applied Basic authentication for user: {Username}", auth.BasicAuth.Username);
+      _logger.LogDebug("Applied Basic authentication for user: {Username}", SchemaResolverService.SanitizeStringForLogging(auth.BasicAuth.Username));
     }
 
     // Apply custom headers
@@ -222,7 +222,7 @@ public class SchemaResolverService : ISchemaResolverService
       foreach (var header in auth.CustomHeaders)
       {
         request.Headers.Add(header.Key, header.Value);
-        _logger.LogDebug("Applied custom header: {HeaderName}", header.Key);
+        _logger.LogDebug("Applied custom header: {HeaderName}", SchemaResolverService.SanitizeStringForLogging(header.Key));
       }
     }
   }
@@ -269,6 +269,29 @@ public class SchemaResolverService : ISchemaResolverService
   private string GenerateCacheKey(string schemaUrl)
   {
     return $"schema:{schemaUrl}";
+  }
+
+  /// <summary>
+  /// Sanitizes a string for safe logging by stripping control characters (including newlines)
+  /// that could be used for log-forging attacks. This is a general-purpose method for 
+  /// sanitizing arbitrary user-supplied strings.
+  /// </summary>
+  public static string SanitizeStringForLogging(string input)
+  {
+    if (string.IsNullOrEmpty(input))
+      return string.Empty;
+
+    // Remove control characters (including CR/LF) to prevent log forging
+    var sanitized = new string(input.Where(c => !char.IsControl(c)).ToArray());
+
+    // Limit length to prevent log flooding
+    const int maxLength = 500;
+    if (sanitized.Length > maxLength)
+    {
+      sanitized = sanitized.Substring(0, maxLength) + "...(truncated)";
+    }
+
+    return sanitized;
   }
 
   /// <summary>
@@ -440,7 +463,7 @@ public class SchemaResolverService : ISchemaResolverService
     // Detect circular references BEFORE checking cache
     if (visitedRefs.Contains(refPointer))
     {
-      _logger.LogWarning("Circular internal reference detected: {RefPointer}", refPointer);
+      _logger.LogWarning("Circular internal reference detected: {RefPointer}", SchemaResolverService.SanitizeStringForLogging(refPointer));
       return JsonNode.Parse($"{{\"$ref\":\"{refPointer}\"}}");
     }
 
@@ -454,14 +477,14 @@ public class SchemaResolverService : ISchemaResolverService
 
     if (resolved == null)
     {
-      _logger.LogWarning("Could not resolve internal reference: {RefPointer}", refPointer);
+      _logger.LogWarning("Could not resolve internal reference: {RefPointer}", SchemaResolverService.SanitizeStringForLogging(refPointer));
       return JsonNode.Parse($"{{\"$ref\":\"{refPointer}\"}}");
     }
 
     // Check if this schema references itself - if so, preserve the ref to avoid expansion
     if (HasSelfReference(resolved, refPointer))
     {
-      _logger.LogDebug("Self-referencing schema detected: {RefPointer}", refPointer);
+      _logger.LogDebug("Self-referencing schema detected: {RefPointer}", SchemaResolverService.SanitizeStringForLogging(refPointer));
       return JsonNode.Parse($"{{\"$ref\":\"{refPointer}\"}}");
     }
 
