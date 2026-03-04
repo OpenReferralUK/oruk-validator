@@ -37,7 +37,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
         {
             using var httpClient = _httpClientFactory?.CreateClient("OpenApiValidationService") ?? new HttpClient();
             httpClient.Timeout = TimeSpan.FromSeconds(10);
-            _logger.LogInformation("Requesting BaseUrl to discover openapi_url: {BaseUrl}", baseUrl);
+            _logger.LogInformation("Requesting BaseUrl to discover openapi_url: {BaseUrl}", SchemaResolverService.SanitizeUrlForLogging(baseUrl));
             var resp = await httpClient.GetAsync(baseUrl, cancellationToken);
             if (!resp.IsSuccessStatusCode)
             {
@@ -59,7 +59,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
                     if (extractedVersion.HasValue)
                     {
                         var versionedSpec = $"{_baseSpecificationUrl}{extractedVersion.Value:0.0}/openapi.json";
-                        _logger.LogInformation("Detected version '{Version}'; using HSDS-UK {ExtractedVersion:0.0} spec: {OpenApiUrl}", version, extractedVersion.Value, versionedSpec);
+                        _logger.LogInformation("Detected version '{Version}'; using HSDS-UK {ExtractedVersion:0.0} spec: {OpenApiUrl}", SchemaResolverService.SanitizeUrlForLogging(version), extractedVersion.Value, versionedSpec);
                         return (versionedSpec, $"Standard version {version} read from '/' endpoint");
                     }
                 }
@@ -69,7 +69,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
                 var openapiUrl = openapiUrlToken?.ToString();
                 if (!string.IsNullOrEmpty(openapiUrl))
                 {
-                    _logger.LogInformation("Discovered openapi_url: {OpenApiUrl}", openapiUrl);
+                    _logger.LogInformation("Discovered openapi_url: {OpenApiUrl}", SchemaResolverService.SanitizeUrlForLogging(openapiUrl));
                     return (openapiUrl, "OpenAPI URL read from '/' endpoint (openapi_url field)");
                 }
 
