@@ -1154,17 +1154,64 @@ public class OpenApiValidationService : IOpenApiValidationService
             return null;
         }
 
-        // Basic sanity checks to ensure the authentication configuration is usable.
+        // Perform stricter validation on the authentication configuration.
         // If it fails validation, treat it as if no authentication was provided.
-        if (string.IsNullOrWhiteSpace(auth.ApiKey)
-            && string.IsNullOrWhiteSpace(auth.BearerToken)
-            && auth.BasicAuth == null
-            && (auth.CustomHeaders == null || auth.CustomHeaders.Count == 0))
+        var hasApiKey = !string.IsNullOrWhiteSpace(auth.ApiKey);
+        var hasBearer = !string.IsNullOrWhiteSpace(auth.BearerToken);
+        var hasBasic = auth.BasicAuth != null
+                       && !string.IsNullOrWhiteSpace(auth.BasicAuth.Username)
+                       && !string.IsNullOrWhiteSpace(auth.BasicAuth.Password);
+        var hasCustomHeaders = auth.CustomHeaders != null && auth.CustomHeaders.Count > 0;
+
+        var mechanismsCount = 0;
+        if (hasApiKey) mechanismsCount++;
+        if (hasBearer) mechanismsCount++;
+        if (hasBasic) mechanismsCount++;
+        if (hasCustomHeaders) mechanismsCount++;
+
+        // Require at least one and at most one primary authentication mechanism.
+        if (mechanismsCount != 1)
         {
             return null;
         }
 
-        return auth;
+        // Return a sanitised copy so that downstream code does not operate on the original user object.
+        var validated = new DataSourceAuthentication();
+
+        if (hasApiKey)
+        {
+            validated.ApiKey = auth.ApiKey!.Trim();
+        }
+        else if (hasBearer)
+        {
+            validated.BearerToken = auth.BearerToken!.Trim();
+        }
+        else if (hasBasic)
+        {
+            validated.BasicAuth = new BasicAuthentication
+            {
+                Username = auth.BasicAuth!.Username.Trim(),
+                Password = auth.BasicAuth.Password
+            };
+        }
+        else if (hasCustomHeaders)
+        {
+            // Copy only non-empty header names and values.
+            validated.CustomHeaders = new Dictionary<string, string>();
+            foreach (var kvp in auth.CustomHeaders!)
+            {
+                if (!string.IsNullOrWhiteSpace(kvp.Key) && !string.IsNullOrWhiteSpace(kvp.Value))
+                {
+                    validated.CustomHeaders[kvp.Key.Trim()] = kvp.Value;
+                }
+            }
+            if (validated.CustomHeaders.Count == 0)
+            {
+                return null;
+            }
+        }
+
+        return validated;
     }
 
     private async Task<JObject> FetchOpenApiSpecFromUrlAsync(string specUrl, DataSourceAuthentication? auth, CancellationToken cancellationToken, bool resolveReferences = true)
@@ -1181,7 +1228,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             using var request = new HttpRequestMessage(HttpMethod.Get, specUrl);
 
-            // Apply authentication only if it passes basic validation
+            // Apply authentication only if it passes strict validation
             var validatedAuth = ValidateAuthentication(auth);
             if (validatedAuth != null)
             {
@@ -1198,7 +1245,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             // or when endpoints won't be tested
             if (resolveReferences)
             {
-                var resolvedContent = await _schemaResolverService.ResolveAsync(content, specUrl, auth);
+                var resolvedContent = await _schemaResolverService.ResolveAsync(content, specUrl, validatedAuth);
                 return JObject.Parse(resolvedContent);
             }
 
