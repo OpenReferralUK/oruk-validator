@@ -7,6 +7,7 @@ namespace OpenReferralApi.Controllers;
 
 [ApiController]
 [Route("openreferraluk")]
+[Route("api/openapi")]
 [Produces("application/json")]
 [EnableRateLimiting("fixed")]
 [ApiExplorerSettings(GroupName = "v1")]
