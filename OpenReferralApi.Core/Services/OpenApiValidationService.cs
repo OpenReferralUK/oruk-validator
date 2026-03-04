@@ -1032,7 +1032,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not validate response for {Url}", testResult.RequestUrl);
+            _logger.LogWarning(ex, "Could not validate response for {Url}", SchemaResolverService.SanitizeUrlForLogging(testResult.RequestUrl ?? string.Empty));
         }
     }
 
