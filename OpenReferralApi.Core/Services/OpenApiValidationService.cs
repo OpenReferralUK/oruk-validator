@@ -192,7 +192,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Validation error: {ex.Message}",
+                Message = $"Validation error: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "VALIDATION_ERROR",
                 Severity = "Error"
             });
@@ -352,7 +352,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Could not validate against OpenAPI schema: {ex.Message}",
+                Message = $"Could not validate against OpenAPI schema: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "SCHEMA_VALIDATION_FAILED",
                 Severity = "Warning"
             });
@@ -624,7 +624,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 RequestUrl = $"{baseUrl}{path}",
                 RequestMethod = method,
                 IsSuccessStatusCode = false,
-                ErrorMessage = ex.Message,
+                ErrorMessage = SanitizeExceptionMessage(ex.Message),
                 ResponseTime = TimeSpan.Zero
             });
             result.Status = "Error";
@@ -974,7 +974,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             stopwatch.Stop();
             testResult.ResponseTime = stopwatch.Elapsed;
             testResult.IsSuccessStatusCode = false;
-            testResult.ErrorMessage = ex.Message;
+            testResult.ErrorMessage = SanitizeExceptionMessage(ex.Message);
         }
 
         return testResult;
@@ -1128,7 +1128,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Invalid JSON format: {ex.Message}",
+                Message = $"Invalid JSON format: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "INVALID_JSON",
                 Severity = "Error"
             });
@@ -1138,13 +1138,34 @@ public class OpenApiValidationService : IOpenApiValidationService
             errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Schema validation error: {ex.Message}",
+                Message = $"Schema validation error: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "SCHEMA_VALIDATION_ERROR",
                 Severity = "Error"
             });
         }
 
         return errors;
+    }
+
+    /// <summary>
+    /// Sanitizes exception messages to prevent log injection attacks by removing control characters.
+    /// </summary>
+    private static string SanitizeExceptionMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+            return string.Empty;
+
+        // Remove control characters (including CR/LF) to prevent log forging
+        var sanitized = new string(message.Where(c => !char.IsControl(c)).ToArray());
+
+        // Limit length to prevent log flooding
+        const int maxLength = 500;
+        if (sanitized.Length > maxLength)
+        {
+            sanitized = sanitized.Substring(0, maxLength) + "...(truncated)";
+        }
+
+        return sanitized;
     }
 
     private static DataSourceAuthentication? ValidateAuthentication(DataSourceAuthentication? auth)

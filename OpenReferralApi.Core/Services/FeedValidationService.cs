@@ -206,7 +206,7 @@ public class FeedValidationService : IFeedValidationService
       _logger.LogWarning(ex, "Feed is not accessible: {FeedUrl}", feed.Url);
       result.IsUp = false;
       result.IsValid = false;
-      result.ErrorMessage = $"HTTP error: {ex.Message}";
+      result.ErrorMessage = $"HTTP error: {SanitizeExceptionMessage(ex.Message)}";
     }
     catch (TaskCanceledException ex)
     {
@@ -220,10 +220,31 @@ public class FeedValidationService : IFeedValidationService
       _logger.LogError(ex, "Unexpected error validating feed: {FeedUrl}", feed.Url);
       result.IsUp = false;
       result.IsValid = false;
-      result.ErrorMessage = $"Unexpected error: {ex.Message}";
+      result.ErrorMessage = $"Unexpected error: {SanitizeExceptionMessage(ex.Message)}";
     }
 
     return result;
+  }
+
+  /// <summary>
+  /// Sanitizes exception messages to prevent log injection attacks by removing control characters.
+  /// </summary>
+  private static string SanitizeExceptionMessage(string message)
+  {
+    if (string.IsNullOrEmpty(message))
+      return string.Empty;
+
+    // Remove control characters (including CR/LF) to prevent log forging
+    var sanitized = new string(message.Where(c => !char.IsControl(c)).ToArray());
+
+    // Limit length to prevent log flooding
+    const int maxLength = 500;
+    if (sanitized.Length > maxLength)
+    {
+      sanitized = sanitized.Substring(0, maxLength) + "...(truncated)";
+    }
+
+    return sanitized;
   }
 }
 

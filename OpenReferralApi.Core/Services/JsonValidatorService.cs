@@ -135,7 +135,7 @@ public class JsonValidatorService : IJsonValidatorService
             result.Errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Validation failed: {ex.Message}",
+                Message = $"Validation failed: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "VALIDATION_ERROR",
                 Severity = "Error"
             });
@@ -194,7 +194,7 @@ public class JsonValidatorService : IJsonValidatorService
             result.Errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Schema validation failed: {ex.Message}",
+                Message = $"Schema validation failed: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "SCHEMA_VALIDATION_ERROR",
                 Severity = "Error"
             });
@@ -316,7 +316,7 @@ public class JsonValidatorService : IJsonValidatorService
             errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Invalid JSON format: {ex.Message}",
+                Message = $"Invalid JSON format: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "INVALID_JSON",
                 Severity = "Error"
             });
@@ -546,6 +546,27 @@ public class JsonValidatorService : IJsonValidatorService
     private static string BuildAdditionalFieldMessage(string path)
     {
         return $"Field '{path}' is not defined in the schema";
+    }
+
+    /// <summary>
+    /// Sanitizes exception messages to prevent log injection attacks by removing control characters.
+    /// </summary>
+    private static string SanitizeExceptionMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+            return string.Empty;
+
+        // Remove control characters (including CR/LF) to prevent log forging
+        var sanitized = new string(message.Where(c => !char.IsControl(c)).ToArray());
+
+        // Limit length to prevent log flooding
+        const int maxLength = 500;
+        if (sanitized.Length > maxLength)
+        {
+            sanitized = sanitized.Substring(0, maxLength) + "...(truncated)";
+        }
+
+        return sanitized;
     }
 
 }
