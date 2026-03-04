@@ -108,7 +108,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     openApiSpec = JObject.Parse(resolvedContent);
                     isResolved = true;
                 }
-                
+
                 endpointTests = await TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, request.DataSourceAuth, request.OpenApiSchema?.Url, cancellationToken);
                 result.EndpointTests = endpointTests;
             }
@@ -1147,6 +1147,26 @@ public class OpenApiValidationService : IOpenApiValidationService
         return errors;
     }
 
+    private static DataSourceAuthentication? ValidateAuthentication(DataSourceAuthentication? auth)
+    {
+        if (auth == null)
+        {
+            return null;
+        }
+
+        // Basic sanity checks to ensure the authentication configuration is usable.
+        // If it fails validation, treat it as if no authentication was provided.
+        if (string.IsNullOrWhiteSpace(auth.ApiKey)
+            && string.IsNullOrWhiteSpace(auth.BearerToken)
+            && auth.BasicAuth == null
+            && (auth.CustomHeaders == null || auth.CustomHeaders.Count == 0))
+        {
+            return null;
+        }
+
+        return auth;
+    }
+
     private async Task<JObject> FetchOpenApiSpecFromUrlAsync(string specUrl, DataSourceAuthentication? auth, CancellationToken cancellationToken, bool resolveReferences = true)
     {
         try
@@ -1161,10 +1181,11 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             using var request = new HttpRequestMessage(HttpMethod.Get, specUrl);
 
-            // Apply authentication if provided
-            if (auth != null)
+            // Apply authentication only if it passes basic validation
+            var validatedAuth = ValidateAuthentication(auth);
+            if (validatedAuth != null)
             {
-                ApplyAuthentication(request, auth);
+                ApplyAuthentication(request, validatedAuth);
             }
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -1180,7 +1201,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 var resolvedContent = await _schemaResolverService.ResolveAsync(content, specUrl, auth);
                 return JObject.Parse(resolvedContent);
             }
-            
+
             // Return unresolved document for spec validation or later lazy resolution
             return JObject.Parse(content);
         }
@@ -2468,7 +2489,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         // Apply Basic Authentication
-        if (authentication.BasicAuth != null && 
+        if (authentication.BasicAuth != null &&
             !string.IsNullOrEmpty(authentication.BasicAuth.Username))
         {
             var credentials = Convert.ToBase64String(
