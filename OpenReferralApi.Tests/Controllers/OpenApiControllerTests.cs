@@ -12,7 +12,6 @@ public class OpenApiControllerTests
 {
     private Mock<IOpenApiValidationService> _validationServiceMock;
     private Mock<ILogger<OpenApiController>> _loggerMock;
-    private Mock<IOpenApiToValidationResponseMapper> _mapperMock;
     private OpenApiController _controller;
 
     [SetUp]
@@ -20,12 +19,10 @@ public class OpenApiControllerTests
     {
         _validationServiceMock = new Mock<IOpenApiValidationService>();
         _loggerMock = new Mock<ILogger<OpenApiController>>();
-        _mapperMock = new Mock<IOpenApiToValidationResponseMapper>();
 
         _controller = new OpenApiController(
             _validationServiceMock.Object,
-            _loggerMock.Object,
-            _mapperMock.Object);
+            _loggerMock.Object);
     }
 
     [Test]
@@ -50,12 +47,8 @@ public class OpenApiControllerTests
             .Setup(x => x.ValidateOpenApiSpecificationAsync(It.IsAny<OpenApiValidationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(validationResult);
 
-        _mapperMock
-            .Setup(x => x.MapToValidationResponse(It.IsAny<OpenApiValidationResult>()))
-            .Returns(new object());
-
         // Act
-        var result = await _controller.ValidateOpenApiSpecificationAsync(request);
+        var result = await _controller.ValidateAsync(request);
 
         // Assert
         Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
@@ -73,7 +66,7 @@ public class OpenApiControllerTests
         };
 
         // Act
-        var result = await _controller.ValidateOpenApiSpecificationAsync(request);
+        var result = await _controller.ValidateAsync(request);
 
         // Assert
         Assert.That(result.Result, Is.TypeOf<BadRequestObjectResult>());
