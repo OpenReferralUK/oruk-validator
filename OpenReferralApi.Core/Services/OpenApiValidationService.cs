@@ -19,6 +19,8 @@ public interface IOpenApiValidationService
 
 public class OpenApiValidationService : IOpenApiValidationService
 {
+    private static readonly Regex ArrayIndexRegex = new(@"\[[^\]]*\]", RegexOptions.Compiled);
+
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly HttpClient _httpClient;
     private readonly IJsonValidatorService _jsonValidatorService;
@@ -1046,36 +1048,37 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     private static List<ValidationError> NormalizeAndDeduplicateValidationErrors(IEnumerable<ValidationError> errors)
     {
-        var uniqueErrors = new Dictionary<string, ValidationError>(StringComparer.Ordinal);
+        var capacity = errors is ICollection<ValidationError> collection ? collection.Count : 0;
+        var seenPaths = capacity > 0
+            ? new HashSet<string>(capacity, StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+        var deduplicatedErrors = capacity > 0
+            ? new List<ValidationError>(capacity)
+            : new List<ValidationError>();
 
         foreach (var error in errors)
         {
             var normalizedPath = NormalizeValidationErrorText(error.Path);
-            var normalizedMessage = NormalizeValidationErrorText(error.Message);
 
-            var normalizedError = new ValidationError
+            // Keep the first validation error encountered for each normalized path.
+            if (!seenPaths.Add(normalizedPath))
+            {
+                continue;
+            }
+
+            // Normalize message only for kept entries to avoid work for discarded duplicates.
+            deduplicatedErrors.Add(new ValidationError
             {
                 Path = normalizedPath,
-                Message = normalizedMessage,
+                Message = NormalizeValidationErrorText(error.Message),
                 ErrorCode = error.ErrorCode,
                 Severity = error.Severity,
                 LineNumber = error.LineNumber,
                 ColumnNumber = error.ColumnNumber
-            };
-
-            var key = BuildValidationErrorDeduplicationKey(normalizedError);
-            if (!uniqueErrors.ContainsKey(key))
-            {
-                uniqueErrors[key] = normalizedError;
-            }
+            });
         }
 
-        return uniqueErrors.Values.ToList();
-    }
-
-    private static string BuildValidationErrorDeduplicationKey(ValidationError error)
-    {
-        return $"{error.Severity}|{error.ErrorCode}|{error.Path}|{error.Message}";
+        return deduplicatedErrors;
     }
 
     private static string NormalizeValidationErrorText(string? input)
@@ -1085,7 +1088,12 @@ public class OpenApiValidationService : IOpenApiValidationService
             return string.Empty;
         }
 
-        return Regex.Replace(input, @"\[[^\]]*\]", "");
+        if (input.IndexOf('[') < 0)
+        {
+            return input;
+        }
+
+        return ArrayIndexRegex.Replace(input, string.Empty);
     }
 
     /// <summary>
