@@ -6,9 +6,10 @@ using OpenReferralApi.Core.Services;
 namespace OpenReferralApi.Controllers;
 
 [ApiController]
-[Route("")]
+[Route("openreferral")]
 [Produces("application/json")]
 [EnableRateLimiting("fixed")]
+[ApiExplorerSettings(GroupName = "v1")]
 public class OpenApiController : BaseOpenApiController
 {
     private readonly IOpenApiValidationService _openApiValidationService;
