@@ -10,14 +10,14 @@ namespace OpenReferralApi.Controllers;
 [Produces("application/json")]
 [EnableRateLimiting("fixed")]
 [ApiExplorerSettings(GroupName = "v1")]
-public class OpenApiController : BaseOpenApiController
+public class OpenReferralController : BaseOpenApiController
 {
     private readonly IOpenApiValidationService _openApiValidationService;
-    private readonly ILogger<OpenApiController> _logger;
+    private readonly ILogger<OpenReferralController> _logger;
 
-    public OpenApiController(
+    public OpenReferralController(
         IOpenApiValidationService openApiValidationService,
-        ILogger<OpenApiController> logger)
+        ILogger<OpenReferralController> logger)
     {
         _openApiValidationService = openApiValidationService;
         _logger = logger;

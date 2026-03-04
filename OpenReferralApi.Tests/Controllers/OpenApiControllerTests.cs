@@ -11,16 +11,16 @@ namespace OpenReferralApi.Tests.Controllers;
 public class OpenApiControllerTests
 {
     private Mock<IOpenApiValidationService> _validationServiceMock;
-    private Mock<ILogger<OpenApiController>> _loggerMock;
-    private OpenApiController _controller;
+    private Mock<ILogger<OpenReferralController>> _loggerMock;
+    private OpenReferralController _controller;
 
     [SetUp]
     public void Setup()
     {
         _validationServiceMock = new Mock<IOpenApiValidationService>();
-        _loggerMock = new Mock<ILogger<OpenApiController>>();
+        _loggerMock = new Mock<ILogger<OpenReferralController>>();
 
-        _controller = new OpenApiController(
+        _controller = new OpenReferralController(
             _validationServiceMock.Object,
             _loggerMock.Object);
     }
@@ -70,5 +70,32 @@ public class OpenApiControllerTests
 
         // Assert
         Assert.That(result.Result, Is.TypeOf<BadRequestObjectResult>());
+    }
+
+    [Test]
+    public void OpenReferralController_UsesOpenReferralRoute()
+    {
+        // Regression guard: route should stay as openreferral for endpoint path consistency.
+        var routeAttribute = typeof(OpenReferralController)
+            .GetCustomAttributes(typeof(RouteAttribute), inherit: false)
+            .Cast<RouteAttribute>()
+            .SingleOrDefault();
+
+        Assert.That(routeAttribute, Is.Not.Null);
+        Assert.That(routeAttribute!.Template, Is.EqualTo("openreferral"));
+    }
+
+    [Test]
+    public void OpenReferralController_NameProducesOpenReferralSwaggerTag()
+    {
+        // Swashbuckle's default tag comes from class name without the Controller suffix.
+        const string controllerSuffix = "Controller";
+        var controllerName = typeof(OpenReferralController).Name;
+        var swaggerTag = controllerName.EndsWith(controllerSuffix, StringComparison.Ordinal)
+            ? controllerName[..^controllerSuffix.Length]
+            : controllerName;
+
+        Assert.That(swaggerTag, Is.EqualTo("OpenReferral"));
+        Assert.That(swaggerTag, Is.Not.EqualTo("OpenApi"));
     }
 }
