@@ -9,6 +9,7 @@ namespace OpenReferralApi.Controllers;
 [Route("openreferraluk")]
 [Produces("application/json")]
 [EnableRateLimiting("fixed")]
+[ApiExplorerSettings(GroupName = "v1")]
 public class OpenReferralUkController : BaseOpenApiController
 {
     private readonly IOpenApiValidationService _openApiValidationService;
