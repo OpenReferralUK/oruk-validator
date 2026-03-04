@@ -463,6 +463,7 @@ public class JsonValidatorService : IJsonValidatorService
                 if (!uniqueWarnings.ContainsKey(normalizedPath))
                 {
                     warning.Path = normalizedPath;
+                    warning.Message = BuildAdditionalFieldMessage(normalizedPath);
                     uniqueWarnings[normalizedPath] = warning;
                 }
             }
@@ -501,7 +502,7 @@ public class JsonValidatorService : IJsonValidatorService
                     warnings.Add(new ValidationError
                     {
                         Path = propertyPath,
-                        Message = $"Field '{propertyPath}' is not defined in the schema",
+                        Message = BuildAdditionalFieldMessage(propertyPath),
                         ErrorCode = "ADDITIONAL_FIELD",
                         Severity = "Info"
                     });
@@ -540,6 +541,11 @@ public class JsonValidatorService : IJsonValidatorService
     private string NormalizeAdditionalFieldPath(string path)
     {
         return Regex.Replace(path, @"\[[^\]]*\]", "");
+    }
+
+    private static string BuildAdditionalFieldMessage(string path)
+    {
+        return $"Field '{path}' is not defined in the schema";
     }
 
 }
