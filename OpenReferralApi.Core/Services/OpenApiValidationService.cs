@@ -1987,7 +1987,8 @@ public class OpenApiValidationService : IOpenApiValidationService
             var successfulResponse = result.TestResults.First(r => r.IsSuccessStatusCode);
 
             _logger.LogInformation("Processing HTTP response from {Url} (Status: {StatusCode}, ResponseSize: {Size} chars)",
-                successfulResponse.RequestUrl, successfulResponse.ResponseStatusCode,
+                SchemaResolverService.SanitizeUrlForLogging(successfulResponse.RequestUrl ?? string.Empty),
+                successfulResponse.ResponseStatusCode,
                 successfulResponse.ResponseBody?.Length ?? 0);
 
             // Log first 500 characters of response for debugging
