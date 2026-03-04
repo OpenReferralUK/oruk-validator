@@ -315,7 +315,7 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_DeduplicationRetainsDistinctSeverityOrErrorCode()
+    public async Task ValidateOpenApiSpecificationAsync_DeduplicationUsesPathOnlyAndKeepsFirstError()
     {
         // Arrange
         var json = CreateOpenApi30Spec();
@@ -359,10 +359,11 @@ public class OpenApiValidationServiceTests
         var errors = result.SpecificationValidation!.Errors;
 
         // Assert
-        Assert.That(errors, Has.Count.EqualTo(2), "Distinct severity/code entries should not be collapsed");
-        Assert.That(errors.Count(e => e.Path == "items.name"), Is.EqualTo(2));
-        Assert.That(errors.Any(e => e.Severity == "Error" && e.ErrorCode == "VALIDATION_ERROR"), Is.True);
-        Assert.That(errors.Any(e => e.Severity == "Warning" && e.ErrorCode == "VALIDATION_WARNING"), Is.True);
+        Assert.That(errors, Has.Count.EqualTo(1), "Entries with the same normalized path should collapse to the first error");
+        Assert.That(errors[0].Path, Is.EqualTo("items.name"));
+        Assert.That(errors[0].Severity, Is.EqualTo("Error"));
+        Assert.That(errors[0].ErrorCode, Is.EqualTo("VALIDATION_ERROR"));
+        Assert.That(errors[0].Message, Is.EqualTo("items.name is required"));
     }
 
     [Test]
@@ -760,7 +761,7 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_EndpointValidation_DoesNotDeduplicateDifferentNormalizedMessages()
+    public async Task ValidateOpenApiSpecificationAsync_EndpointValidation_DeduplicatesByPathNotMessage()
     {
         // Arrange
         var json = CreateOpenApi30SpecWithResponseSchema();
@@ -809,9 +810,9 @@ public class OpenApiValidationServiceTests
         var errors = result.EndpointTests[0].TestResults[0].ValidationResult!.Errors;
 
         // Assert
-        Assert.That(errors, Has.Count.EqualTo(2));
-        Assert.That(errors.All(e => e.Path == "data"), Is.True);
-        Assert.That(errors.Select(e => e.Message).Distinct().Count(), Is.EqualTo(2));
+        Assert.That(errors, Has.Count.EqualTo(1));
+        Assert.That(errors[0].Path, Is.EqualTo("data"));
+        Assert.That(errors[0].Message, Is.EqualTo("data should be object"));
     }
 
     [Test]
