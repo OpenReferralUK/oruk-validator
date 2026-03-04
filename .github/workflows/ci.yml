@@ -28,6 +28,10 @@ jobs:
     name: Enforce PR from staging only   # only meaningful on PRs targeting main
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     uses: ./.github/workflows/staging-to-main-check.yml
+    permissions:
+      contents: read
+      pull-requests: write      # to post comments & set status
+      statuses: write           # to create commit status
 
   # --- JOB 2: BUILD AND TEST ---
   build-and-test:
