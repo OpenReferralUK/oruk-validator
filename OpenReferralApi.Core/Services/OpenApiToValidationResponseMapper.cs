@@ -98,20 +98,27 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
             ? new[] { specificTest } 
             : endpoint.TestResults.Where(tr => tr.ValidationResult != null && !tr.ValidationResult.IsValid);
             
+        // Track seen error paths to deduplicate errors across multiple test results
+        var seenErrorPaths = new HashSet<string>(StringComparer.Ordinal);
+        
         foreach (var testResult in testsToProcess)
         {
             if (testResult.ValidationResult != null && !testResult.ValidationResult.IsValid)
             {
                 foreach (var validationError in testResult.ValidationResult.Errors)
                 {
-                    messages.Add(new
+                    // Only add error if we haven't seen this path before
+                    if (seenErrorPaths.Add(validationError.Path))
                     {
-                        name = validationError.ErrorCode,
-                        description = validationError.Severity,
-                        message = validationError.Message,
-                        errorIn = validationError.Path,
-                        errorAt = ""
-                    });
+                        messages.Add(new
+                        {
+                            name = validationError.ErrorCode,
+                            description = validationError.Severity,
+                            message = validationError.Message,
+                            errorIn = validationError.Path,
+                            errorAt = ""
+                        });
+                    }
                 }
             }
         }
