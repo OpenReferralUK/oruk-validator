@@ -1245,6 +1245,36 @@ public class OpenApiValidationService : IOpenApiValidationService
                             analysis.RequestBodyCount = requestBodiesObject.Count;
                         }
                     }
+
+                    // Count headers
+                    if (componentsObject.ContainsKey("headers"))
+                    {
+                        var headers = componentsObject["headers"];
+                        if (headers is JObject headersObject)
+                        {
+                            analysis.HeaderCount = headersObject.Count;
+                        }
+                    }
+
+                    // Count links
+                    if (componentsObject.ContainsKey("links"))
+                    {
+                        var links = componentsObject["links"];
+                        if (links is JObject linksObject)
+                        {
+                            analysis.LinkCount = linksObject.Count;
+                        }
+                    }
+
+                    // Count callbacks
+                    if (componentsObject.ContainsKey("callbacks"))
+                    {
+                        var callbacks = componentsObject["callbacks"];
+                        if (callbacks is JObject callbacksObject)
+                        {
+                            analysis.CallbackCount = callbacksObject.Count;
+                        }
+                    }
                 }
             }
 
@@ -1258,6 +1288,9 @@ public class OpenApiValidationService : IOpenApiValidationService
                 }
             }
 
+            // Count examples throughout the specification
+            analysis.ExampleCount = CountExamplesInSpec(specObject);
+
             // Count references (simplified)
             var specJson = specObject.ToString();
             var refMatches = Regex.Matches(specJson, "\\$ref");
@@ -1268,6 +1301,126 @@ public class OpenApiValidationService : IOpenApiValidationService
             _logger.LogWarning(ex, "Error analyzing schema structure");
         }
         return analysis;
+    }
+
+    /// <summary>
+    /// Counts all example definitions throughout the OpenAPI specification
+    /// </summary>
+    private int CountExamplesInSpec(JObject specObject)
+    {
+        int exampleCount = 0;
+
+        try
+        {
+            // Count examples in components section (OpenAPI 3.1+)
+            if (specObject.ContainsKey("components"))
+            {
+                var components = specObject["components"];
+                if (components is JObject componentsObject && componentsObject.ContainsKey("examples"))
+                {
+                    var examples = componentsObject["examples"];
+                    if (examples is JObject examplesObject)
+                    {
+                        exampleCount += examplesObject.Count;
+                    }
+                }
+            }
+
+            // Count examples in paths - request bodies and responses
+            if (specObject.ContainsKey("paths"))
+            {
+                var paths = specObject["paths"];
+                if (paths is JObject pathsObject)
+                {
+                    foreach (var path in pathsObject.Properties())
+                    {
+                        if (path.Value is JObject pathObject)
+                        {
+                            // Check operations (get, post, put, delete, etc.)
+                            foreach (var operation in pathObject.Properties())
+                            {
+                                if (operation.Value is JObject operationObject)
+                                {
+                                    // Count examples in request body
+                                    if (operationObject.ContainsKey("requestBody"))
+                                    {
+                                        var requestBody = operationObject["requestBody"];
+                                        if (requestBody is JObject requestBodyObject && requestBodyObject.ContainsKey("content"))
+                                        {
+                                            var content = requestBodyObject["content"];
+                                            if (content is JObject contentObject)
+                                            {
+                                                foreach (var mediaType in contentObject.Properties())
+                                                {
+                                                    if (mediaType.Value is JObject mediaTypeObject)
+                                                    {
+                                                        if (mediaTypeObject.ContainsKey("example"))
+                                                        {
+                                                            exampleCount++;
+                                                        }
+                                                        if (mediaTypeObject.ContainsKey("examples"))
+                                                        {
+                                                            var examples = mediaTypeObject["examples"];
+                                                            if (examples is JObject examplesObject)
+                                                            {
+                                                                exampleCount += examplesObject.Count;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Count examples in responses
+                                    if (operationObject.ContainsKey("responses"))
+                                    {
+                                        var responses = operationObject["responses"];
+                                        if (responses is JObject responsesObject)
+                                        {
+                                            foreach (var response in responsesObject.Properties())
+                                            {
+                                                if (response.Value is JObject responseObject && responseObject.ContainsKey("content"))
+                                                {
+                                                    var content = responseObject["content"];
+                                                    if (content is JObject contentObject)
+                                                    {
+                                                        foreach (var mediaType in contentObject.Properties())
+                                                        {
+                                                            if (mediaType.Value is JObject mediaTypeObject)
+                                                            {
+                                                                if (mediaTypeObject.ContainsKey("example"))
+                                                                {
+                                                                    exampleCount++;
+                                                                }
+                                                                if (mediaTypeObject.ContainsKey("examples"))
+                                                                {
+                                                                    var examples = mediaTypeObject["examples"];
+                                                                    if (examples is JObject examplesObject)
+                                                                    {
+                                                                        exampleCount += examplesObject.Count;
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Error counting examples in specification");
+        }
+
+        return exampleCount;
     }
 
     /// <summary>
