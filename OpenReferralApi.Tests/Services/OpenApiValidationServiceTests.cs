@@ -649,7 +649,7 @@ public class OpenApiValidationServiceTests
         // Assert
         Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
         Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(3));
-        Assert.That(result.EndpointTests[0].TestResults.All(tr => tr.IsSuccess), Is.True);
+        Assert.That(result.EndpointTests[0].TestResults.All(tr => tr.IsSuccessStatusCode), Is.True);
     }
 
     [Test]
