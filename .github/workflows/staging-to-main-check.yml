@@ -2,9 +2,12 @@ name: Enforce staging → main only
 
 # Runs on every pull request targeting main
 on:
-  pull_request:
-    branches: [main]
+  workflow_call:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+  
 permissions:
   contents: read
   pull-requests: write      # to post comments & set status
@@ -12,11 +15,11 @@ permissions:
 
 jobs:
   check-source-branch:
-    name: staging-to-main-only
+    name: staging-to-main-check
     runs-on: ubuntu-latest
     steps:
       - name: Fail if PR is not from staging
-        if: github.head_ref != 'staging' && github.actor != 'dependabot[bot]'
+        if: github.head_ref != 'staging'
         run: |
           echo "Error: Merges into 'main' are only allowed from the 'staging' branch."
           echo "Current source branch: ${{ github.head_ref }}"

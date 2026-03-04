@@ -23,7 +23,13 @@ permissions:
   actions: read
 
 jobs:
-  # --- JOB 1: BUILD AND TEST ---
+  # --- JOB 1: PR GATES ---
+  staging-to-main-enforcement:
+    name: Enforce PR from staging only   # only meaningful on PRs targeting main
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    uses: ./.github/workflows/staging-to-main-check.yml
+
+  # --- JOB 2: BUILD AND TEST ---
   build-and-test:
     name: Build and Test (.NET)
     runs-on: ubuntu-latest
@@ -65,7 +71,7 @@ jobs:
           path: ./coverage
           retention-days: 14
 
-  # --- JOB 2: CODEQL ---
+  # --- JOB 3: CODEQL ---
   codeql-analysis:
     name: CodeQL Security Analysis (C#)
     runs-on: ubuntu-latest
@@ -97,7 +103,7 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4.32.4
 
-  # --- JOB 3: TRIVY FS ---
+  # --- JOB 4: TRIVY FS ---
   security-scan-fs:
     name: Trivy Filesystem Scan
     runs-on: ubuntu-latest
@@ -125,7 +131,7 @@ jobs:
         with:
           sarif_file: trivy-fs-results.sarif
 
-  # --- JOB 4: DOCKER BUILD & PUSH ---
+  # --- JOB 6: DOCKER BUILD & PUSH ---
   docker-build:
     name: Build & Push Docker Image to GHCR
     runs-on: ubuntu-latest
@@ -187,7 +193,7 @@ jobs:
           docker pull ${{ steps.image_ref.outputs.image_ref }}
           echo "✓ Image successfully pushed and pulled"
 
-  # --- JOB 5: TRIVY IMAGE SCAN ---
+  # --- JOB 7: TRIVY IMAGE SCAN ---
   security-scan-image:
     name: Trivy Image Vulnerability Scan
     runs-on: ubuntu-latest
@@ -223,7 +229,7 @@ jobs:
         with:
           sarif_file: trivy-image-results.sarif
 
-  # --- JOB 6: ZAP SCAN ---
+  # --- JOB 8: ZAP SCAN ---
   zap-scan:
     name: OWASP ZAP Baseline Scan
     runs-on: ubuntu-latest
@@ -284,7 +290,7 @@ jobs:
           name: zap-scan-results
           path: zap-reports/
 
-  # --- JOB 7: DEPLOY STAGING ---
+  # --- JOB 8: DEPLOY STAGING ---
   deploy-staging:
     name: Deploy to Staging
     needs: [docker-build, security-scan-image, zap-scan]
@@ -308,7 +314,7 @@ jobs:
           sleep 12
           curl --fail "${{ vars.STAGING_HEALTH_ENDPOINT }}" || echo "⚠️ Staging health check failed"
 
-  # --- JOB 8: DEPLOY PRODUCTION ---
+  # --- JOB 9: DEPLOY PRODUCTION ---
   deploy-production:
     name: Deploy to Production
     needs: [docker-build, security-scan-image, zap-scan]
