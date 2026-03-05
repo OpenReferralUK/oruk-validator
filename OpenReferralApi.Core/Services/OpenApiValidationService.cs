@@ -588,7 +588,14 @@ public class OpenApiValidationService : IOpenApiValidationService
                 if (testResult.IsSuccessStatusCode && testResult.ResponseBody != null)
                 {
                     await ValidateResponseAsync(testResult, operation, openApiDocument, documentUri, options, cancellationToken);
-                    result.Status = testResult.ValidationResult != null && testResult.ValidationResult.IsValid
+                    // If no schema is defined (ValidationResult has no errors and IsValid is false), treat as passed
+                    // A schema validation that failed would have errors, while a successful validation would have IsValid=true
+                    var hasValidationErrors = testResult.ValidationResult != null && 
+                                             testResult.ValidationResult.Errors.Any();
+                    var isValidationSuccess = testResult.ValidationResult != null && 
+                                             testResult.ValidationResult.IsValid;
+                    
+                    result.Status = (!hasValidationErrors && !isValidationSuccess) || isValidationSuccess
                         ? EndpointTestStatus.PassedValidation
                         : EndpointTestStatus.FailedValidation;
                 }
