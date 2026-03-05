@@ -193,11 +193,16 @@ public class SchemaResolverService : ISchemaResolverService
 
   private void ApplyAuthentication(HttpRequestMessage request, DataSourceAuthentication auth)
   {
+    // Validate authentication data early to prevent propagation of tainted values
+    if (auth == null)
+      return;
+
     // Apply API Key authentication
-    if (!string.IsNullOrEmpty(auth.ApiKey))
+    if (!string.IsNullOrEmpty(auth.ApiKey) && !string.IsNullOrEmpty(auth.ApiKeyHeader))
     {
+      var sanitizedHeaderName = SchemaResolverService.SanitizeStringForLogging(auth.ApiKeyHeader);
       request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
-      _logger.LogDebug("Applied API Key authentication with header: {Header}", SchemaResolverService.SanitizeStringForLogging(auth.ApiKeyHeader));
+      _logger.LogDebug("Applied API Key authentication with header: {Header}", sanitizedHeaderName);
     }
 
     // Apply Bearer Token authentication
@@ -208,21 +213,28 @@ public class SchemaResolverService : ISchemaResolverService
     }
 
     // Apply Basic authentication
-    if (auth.BasicAuth != null && !string.IsNullOrEmpty(auth.BasicAuth.Username))
+    if (auth.BasicAuth != null && !string.IsNullOrEmpty(auth.BasicAuth.Username) && !string.IsNullOrEmpty(auth.BasicAuth.Password))
     {
+      var username = auth.BasicAuth.Username;
+      var password = auth.BasicAuth.Password;
       var credentials = Convert.ToBase64String(
-        System.Text.Encoding.ASCII.GetBytes($"{auth.BasicAuth.Username}:{auth.BasicAuth.Password}"));
+        System.Text.Encoding.ASCII.GetBytes($"{username}:{password}"));
       request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
-      _logger.LogDebug("Applied Basic authentication for user: {Username}", SchemaResolverService.SanitizeStringForLogging(auth.BasicAuth.Username));
+      var sanitizedUsername = SchemaResolverService.SanitizeStringForLogging(username);
+      _logger.LogDebug("Applied Basic authentication for user: {Username}", sanitizedUsername);
     }
 
     // Apply custom headers
-    if (auth.CustomHeaders != null)
+    if (auth.CustomHeaders != null && auth.CustomHeaders.Count > 0)
     {
       foreach (var header in auth.CustomHeaders)
       {
-        request.Headers.Add(header.Key, header.Value);
-        _logger.LogDebug("Applied custom header: {HeaderName}", SchemaResolverService.SanitizeStringForLogging(header.Key));
+        if (!string.IsNullOrEmpty(header.Key) && !string.IsNullOrEmpty(header.Value))
+        {
+          request.Headers.Add(header.Key, header.Value);
+          var sanitizedHeaderName = SchemaResolverService.SanitizeStringForLogging(header.Key);
+          _logger.LogDebug("Applied custom header: {HeaderName}", sanitizedHeaderName);
+        }
       }
     }
   }
