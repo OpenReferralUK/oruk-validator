@@ -2287,9 +2287,25 @@ public class OpenApiValidationService : IOpenApiValidationService
                 if (!string.IsNullOrEmpty(header.Key) && !string.IsNullOrEmpty(header.Value))
                 {
                     request.Headers.Add(header.Key, header.Value);
-                    _logger.LogDebug("Applied custom header: {HeaderName}", header.Key);
+                    _logger.LogDebug("Applied custom header: {HeaderName}", SanitizeForLogging(header.Key));
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Sanitizes a string for safe logging by removing control characters such as newlines.
+    /// </summary>
+    /// <param name="value">The value to sanitize.</param>
+    /// <returns>A sanitized string suitable for logging.</returns>
+    private static string SanitizeForLogging(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        var sanitizedChars = value.Where(c => !char.IsControl(c)).ToArray();
+        return new string(sanitizedChars);
     }
 }
