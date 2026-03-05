@@ -862,9 +862,27 @@ public class SchemaResolverService : ISchemaResolverService
         settings.BaseUri = new Uri(documentUri);
       }
 
-      var schema = await Task.Run(() => JSchema.Parse(resolvedSchemaJson, settings), cancellationToken);
-
-      _logger.LogDebug("Successfully created schema with reference resolution");
+      JSchema schema;
+      try
+      {
+        schema = await Task.Run(() => JSchema.Parse(resolvedSchemaJson, settings), cancellationToken);
+        _logger.LogDebug("Successfully created schema with reference resolution");
+      }
+      catch (Exception ex)
+      {
+        _logger.LogWarning(ex, "Failed to parse schema with resolver, attempting to parse without resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+        try
+        {
+          // Fallback: parse without resolver
+          schema = await Task.Run(() => JSchema.Parse(resolvedSchemaJson), cancellationToken);
+          _logger.LogDebug("Successfully created schema without resolver");
+        }
+        catch (Exception fallbackEx)
+        {
+          _logger.LogError(fallbackEx, "Failed to parse schema even without resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+          throw new InvalidOperationException("Unable to parse schema with or without resolver", fallbackEx);
+        }
+      }
 
       return schema;
     }
