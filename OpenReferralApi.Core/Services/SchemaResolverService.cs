@@ -213,8 +213,8 @@ public class SchemaResolverService : ISchemaResolverService
         _logger.LogWarning("Invalid API key header name provided, skipping API key authentication");
         return;
       }
-      var sanitizedHeaderName = SchemaResolverService.SanitizeStringForLogging(auth.ApiKeyHeader);
       request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
+      var sanitizedHeaderName = SchemaResolverService.SanitizeStringForLogging(auth.ApiKeyHeader);
       _logger.LogDebug("Applied API Key authentication with header: {Header}", sanitizedHeaderName);
     }
 
@@ -236,10 +236,10 @@ public class SchemaResolverService : ISchemaResolverService
       }
       var username = auth.BasicAuth.Username;
       var password = auth.BasicAuth.Password;
+      var sanitizedUsername = SchemaResolverService.SanitizeStringForLogging(username);
       var credentials = Convert.ToBase64String(
         System.Text.Encoding.ASCII.GetBytes($"{username}:{password}"));
       request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
-      var sanitizedUsername = SchemaResolverService.SanitizeStringForLogging(username);
       _logger.LogDebug("Applied Basic authentication for user: {Username}", sanitizedUsername);
     }
 
@@ -251,15 +251,14 @@ public class SchemaResolverService : ISchemaResolverService
         if (!string.IsNullOrEmpty(header.Key) && !string.IsNullOrEmpty(header.Value))
         {
           // Validate header name before adding to prevent header injection
+          var sanitizedHeaderKey = SchemaResolverService.SanitizeStringForLogging(header.Key);
           if (!IsValidHeaderName(header.Key))
           {
-            var sanitizedBadHeader = SchemaResolverService.SanitizeStringForLogging(header.Key);
-            _logger.LogWarning("Invalid custom header name, skipping: {HeaderName}", sanitizedBadHeader);
+            _logger.LogWarning("Invalid custom header name, skipping: {HeaderName}", sanitizedHeaderKey);
             continue;
           }
           request.Headers.Add(header.Key, header.Value);
-          var sanitizedHeaderName = SchemaResolverService.SanitizeStringForLogging(header.Key);
-          _logger.LogDebug("Applied custom header: {HeaderName}", sanitizedHeaderName);
+          _logger.LogDebug("Applied custom header: {HeaderName}", sanitizedHeaderKey);
         }
       }
     }
