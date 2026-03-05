@@ -1,9 +1,7 @@
 using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
 
 namespace OpenReferralApi.Core.Models;
 
-[JsonConverter(typeof(StringEnumConverter))]
 public enum EndpointTestStatus
 {
     NotTested,
