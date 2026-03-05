@@ -842,7 +842,7 @@ public class OpenApiValidationServiceTests
             .First(e => e.ErrorCode == "NO_IDS_AVAILABLE");
 
         // Assert
-        Assert.That(result.EndpointTests[0].Status, Is.EqualTo("NotTested"));
+        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.NotTested));
         Assert.That(warning.Path.Contains("["), Is.False, "Path should be normalized");
         Assert.That(warning.Message.Contains("["), Is.False, "Message should be normalized");
     }
@@ -886,7 +886,7 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
-        Assert.That(result.EndpointTests[0].Status, Is.EqualTo("Warning"));
+        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
         Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(1));
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors,
@@ -930,7 +930,7 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
-        Assert.That(result.EndpointTests[0].Status, Is.EqualTo("Skipped"));
+        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.Skipped));
         Assert.That(result.EndpointTests[0].TestResults, Is.Empty);
     }
 

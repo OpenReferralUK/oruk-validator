@@ -83,7 +83,7 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
             description = description,
             messageLevel = required ? "error" : "warning",
             required = required,
-            success = endpointTests.All(e => e.Status == "Success" || e.Status == "Warning"),
+            success = endpointTests.All(e => e.Status == EndpointTestStatus.PassedValidation || e.Status == EndpointTestStatus.PassedWithWarnings),
             tests = tests
         };
     }
@@ -124,7 +124,7 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
         }
 
         // If endpoint succeeded but had performance issues, add info messages
-        if (endpoint.Status == "Success" && endpoint.TestResults.Any())
+        if (endpoint.Status == EndpointTestStatus.PassedValidation && endpoint.TestResults.Any())
         {
             var avgResponseTime = endpoint.TestResults
                 .Where(tr => tr.ResponseTime > TimeSpan.Zero)

@@ -499,7 +499,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             OperationId = operation["operationId"]?.ToString(),
             Summary = operation["summary"]?.ToString(),
             IsOptional = operation.IsOptionalEndpoint(),
-            Status = "NotTested"
+            Status = EndpointTestStatus.NotTested
         };
 
         try
@@ -508,7 +508,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             bool skipOptional = options.TestOptionalEndpoints == false && isOptional;
             if (skipOptional)
             {
-                result.Status = "Skipped";
+                result.Status = EndpointTestStatus.Skipped;
                 return result;
             }
 
@@ -558,7 +558,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                             ErrorCode = "OPTIONAL_ENDPOINT_NON_SUCCESS",
                             Severity = "Warning"
                         });
-                        result.Status = "Warning";
+                        result.Status = EndpointTestStatus.PassedWithWarnings;
                     }
                     else
                     {
@@ -580,7 +580,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                             ErrorCode = "REQUIRED_ENDPOINT_FAILED",
                             Severity = "Error"
                         });
-                        result.Status = "Failed";
+                        result.Status = EndpointTestStatus.FailedValidation;
                     }
                 }
 
@@ -588,28 +588,34 @@ public class OpenApiValidationService : IOpenApiValidationService
                 if (testResult.IsSuccessStatusCode && testResult.ResponseBody != null)
                 {
                     await ValidateResponseAsync(testResult, operation, openApiDocument, documentUri, options, cancellationToken);
-                    result.Status = testResult.ValidationResult != null && testResult.ValidationResult.IsValid ? "Success" : "Failed";
+                    result.Status = testResult.ValidationResult != null && testResult.ValidationResult.IsValid
+                        ? EndpointTestStatus.PassedValidation
+                        : EndpointTestStatus.FailedValidation;
                 }
 
 
                 // Optional endpoint warning logic (only apply if status wasn't already set by non-success handling)
-                if (result.Status == "NotTested" || result.Status == "Success" || result.Status == "Failed")
+                if (result.Status == EndpointTestStatus.NotTested || result.Status == EndpointTestStatus.PassedValidation || result.Status == EndpointTestStatus.FailedValidation)
                 {
                     if (isOptional && options.TestOptionalEndpoints && options.TreatOptionalEndpointsAsWarnings)
                     {
                         // If there are validation errors, report as warnings
                         if (testResult.ValidationResult != null && !testResult.ValidationResult.IsValid)
                         {
-                            result.Status = "Warning";
+                            result.Status = EndpointTestStatus.PassedWithWarnings;
                         }
-                        else if (result.Status != "Warning")
+                        else if (result.Status != EndpointTestStatus.PassedWithWarnings)
                         {
-                            result.Status = testResult.IsSuccessStatusCode ? "Success" : "Warning";
+                            result.Status = testResult.IsSuccessStatusCode
+                                ? EndpointTestStatus.PassedValidation
+                                : EndpointTestStatus.PassedWithWarnings;
                         }
                     }
-                    else if (result.Status != "Warning" && result.Status != "Failed")
+                    else if (result.Status != EndpointTestStatus.PassedWithWarnings && result.Status != EndpointTestStatus.FailedValidation)
                     {
-                        result.Status = testResult.IsSuccessStatusCode ? "Success" : "Failed";
+                        result.Status = testResult.IsSuccessStatusCode
+                            ? EndpointTestStatus.PassedValidation
+                            : EndpointTestStatus.FailedValidation;
                     }
                 }
 
@@ -627,7 +633,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 ErrorMessage = SanitizeExceptionMessage(ex.Message),
                 ResponseTime = TimeSpan.Zero
             });
-            result.Status = "Error";
+            result.Status = EndpointTestStatus.Error;
         }
         finally
         {
@@ -680,7 +686,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     Severity = "Warning"
                 });
                 NormalizeValidationResultErrors(firstPageResult.ValidationResult);
-                result.Status = "Warning";
+                result.Status = EndpointTestStatus.PassedWithWarnings;
             }
             else
             {
@@ -692,7 +698,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     Severity = "Error"
                 });
                 NormalizeValidationResultErrors(firstPageResult.ValidationResult);
-                result.Status = "Failed";
+                result.Status = EndpointTestStatus.FailedValidation;
             }
             return;
         }
@@ -718,6 +724,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             });
             NormalizeValidationResultErrors(firstPageResult.ValidationResult);
             firstPageResult.ValidationResult.IsValid = false;
+            result.Status = EndpointTestStatus.PassedWithWarnings;
             _logger.LogWarning("Paginated endpoint {Path} returned empty feed (0 items)", SanitizeForLogging(path));
             return; // No further pagination testing needed for empty feeds
         }
@@ -757,6 +764,49 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             _logger.LogDebug("Endpoint {Path} has only 1 page or pagination info not available, skipping additional page tests", SanitizeForLogging(path));
         }
+
+        foreach (var testResult in result.TestResults)
+        {
+            NormalizeValidationResultErrors(testResult.ValidationResult);
+        }
+
+        result.Status = DeterminePaginatedEndpointStatus(result);
+    }
+
+    private static EndpointTestStatus DeterminePaginatedEndpointStatus(EndpointTestResult result)
+    {
+        if (!result.TestResults.Any())
+        {
+            return EndpointTestStatus.NotTested;
+        }
+
+        if (result.TestResults.Any(tr => !tr.IsSuccessStatusCode))
+        {
+            return result.IsOptional
+                ? EndpointTestStatus.PassedWithWarnings
+                : EndpointTestStatus.FailedValidation;
+        }
+
+        var validationErrors = result.TestResults
+            .Where(tr => tr.ValidationResult != null)
+            .SelectMany(tr => tr.ValidationResult!.Errors);
+
+        if (validationErrors.Any(e => string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase)))
+        {
+            return EndpointTestStatus.FailedValidation;
+        }
+
+        if (validationErrors.Any(e => string.Equals(e.Severity, "Warning", StringComparison.OrdinalIgnoreCase)))
+        {
+            return EndpointTestStatus.PassedWithWarnings;
+        }
+
+        if (result.TestResults.Any(tr => tr.ValidationResult != null && !tr.ValidationResult.IsValid))
+        {
+            return EndpointTestStatus.FailedValidation;
+        }
+
+        return EndpointTestStatus.PassedValidation;
     }
 
     /// <summary>
@@ -1331,9 +1381,9 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             TotalEndpoints = endpointTests.Count,
             TestedEndpoints = endpointTests.Count(e => e.IsTested),
-            SuccessfulTests = endpointTests.Count(e => e.Status == "Success"),
-            FailedTests = endpointTests.Count(e => e.Status == "Failed" || e.Status == "Error"),
-            SkippedTests = endpointTests.Count(e => e.Status == "NotTested" || e.Status == "Skipped"),
+            SuccessfulTests = endpointTests.Count(e => e.Status == EndpointTestStatus.PassedValidation),
+            FailedTests = endpointTests.Count(e => e.Status == EndpointTestStatus.FailedValidation || e.Status == EndpointTestStatus.Error),
+            SkippedTests = endpointTests.Count(e => e.Status == EndpointTestStatus.NotTested || e.Status == EndpointTestStatus.Skipped),
             TotalRequests = endpointTests.Sum(e => e.TestResults.Count),
             SpecificationValid = specValidation?.IsValid ?? true
         };
@@ -2107,12 +2157,13 @@ public class OpenApiValidationService : IOpenApiValidationService
                 OperationId = operation["operationId"]?.ToString(),
                 Summary = operation["summary"]?.ToString(),
                 IsOptional = operation.IsOptionalEndpoint(),
-                Status = "NotTested",
-                IsTested = true
+                Status = EndpointTestStatus.NotTested,
+                IsTested = false
             };
 
             // Test each ID
             var allTestsSuccessful = true;
+            var hasSkippedResult = false;
             foreach (var id in idsToTest)
             {
                 var substitutedPath = SubstitutePathParametersWithSpecificId(path, id);
@@ -2125,27 +2176,38 @@ public class OpenApiValidationService : IOpenApiValidationService
                 //compositeResult.ValidationErrors.AddRange(singleResult.ValidationErrors);
                 //compositeResult.SchemaValidationDetails.AddRange(singleResult.SchemaValidationDetails);
 
-                if (singleResult.Status == "Failed" || singleResult.Status == "Error")
+                if (singleResult.Status == EndpointTestStatus.Skipped)
+                {
+                    hasSkippedResult = true;
+                }
+
+                if (singleResult.Status == EndpointTestStatus.FailedValidation || singleResult.Status == EndpointTestStatus.Error)
                 {
                     allTestsSuccessful = false;
                 }
             }
+
+            compositeResult.IsTested = compositeResult.TestResults.Any();
 
             // Set the composite status based on all test results
             if (compositeResult.TestResults.Any())
             {
                 if (allTestsSuccessful)
                 {
-                    compositeResult.Status = "Success";
+                    compositeResult.Status = EndpointTestStatus.PassedValidation;
                 }
                 else if (compositeResult.TestResults.Any(tr => tr.ValidationResult != null && tr.ValidationResult.Errors.Any(e => e.Severity == "Warning")) && !compositeResult.TestResults.Any(tr => tr.ValidationResult != null && tr.ValidationResult.Errors.Any(e => e.Severity == "Error")))
                 {
-                    compositeResult.Status = "Warning";
+                    compositeResult.Status = EndpointTestStatus.PassedWithWarnings;
                 }
                 else
                 {
-                    compositeResult.Status = "Failed";
+                    compositeResult.Status = EndpointTestStatus.FailedValidation;
                 }
+            }
+            else if (hasSkippedResult)
+            {
+                compositeResult.Status = EndpointTestStatus.Skipped;
             }
 
             return compositeResult;
@@ -2170,7 +2232,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 OperationId = operation["operationId"]?.ToString(),
                 Summary = operation["summary"]?.ToString(),
                 IsOptional = operation.IsOptionalEndpoint(),
-                Status = "NotTested",
+                Status = EndpointTestStatus.NotTested,
                 IsTested = false,
                 TestResults = new List<HttpTestResult>(){
                     new() {
