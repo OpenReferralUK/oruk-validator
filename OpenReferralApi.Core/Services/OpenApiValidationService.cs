@@ -2259,7 +2259,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                 var collectionProps = ExtractCollectionPropertiesFromSchema(operation, openApiDocument);
                 if (collectionProps.Any())
                 {
-                    _logger.LogDebug("Found collection properties from OpenAPI schema: [{CollectionProps}]", string.Join(", ", collectionProps));
+                    var sanitizedProps = string.Join(", ", collectionProps.Select(p => SanitizeForLogging(p)));
+                    _logger.LogDebug("Found collection properties from OpenAPI schema: [{CollectionProps}]", sanitizedProps);
 
                     foreach (var propName in collectionProps)
                     {
