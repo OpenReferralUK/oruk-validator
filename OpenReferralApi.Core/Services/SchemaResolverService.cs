@@ -346,8 +346,17 @@ public class SchemaResolverService : ISchemaResolverService
     if (string.IsNullOrEmpty(input))
       return string.Empty;
 
-    // Remove control characters (including CR/LF) to prevent log forging
-    var sanitized = new string(input.Where(c => !char.IsControl(c)).ToArray());
+    // Remove control characters (including CR/LF) and restrict to a conservative set of printable characters
+    // to prevent log forging or confusing log output.
+    var sanitizedChars = input
+      .Where(c =>
+        // Exclude control characters
+        !char.IsControl(c) &&
+        // Allow basic printable ASCII range; adjust as needed if wider Unicode is desired
+        c >= ' ' && c <= '~')
+      .ToArray();
+
+    var sanitized = new string(sanitizedChars);
 
     // Limit length to prevent log flooding
     const int maxLength = 500;
