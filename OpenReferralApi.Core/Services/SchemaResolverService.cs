@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Caching.Memory;
@@ -133,7 +134,7 @@ public class SchemaResolverService : ISchemaResolverService
   /// </summary>
   /// <param name="auth">The authentication configuration supplied by the caller.</param>
   /// <returns>True if the configuration is valid and may be applied; otherwise, false.</returns>
-  private static bool IsValidAuthentication(DataSourceAuthentication? auth)
+  private static bool IsValidAuthentication([NotNullWhen(true)] DataSourceAuthentication? auth)
   {
     if (auth == null)
     {
