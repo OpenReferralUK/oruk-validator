@@ -312,6 +312,90 @@ public class SchemaResolverServiceTests
     Assert.That(memoryCache.TryGetValue(cacheKey, out string? _), Is.False);
   }
 
+  [Test]
+  public async Task ResolveAsync_WithNullAuth_DoesNotApplyAuthenticationHeaders()
+  {
+    // Arrange
+    var schemaUrl = "https://example.com/schema.json";
+    var schemaJson = @"{""type"": ""object""}";
+    HttpRequestMessage? capturedRequest = null;
+
+    var handler = new MockHttpMessageHandler(async request =>
+    {
+      capturedRequest = request;
+      return new HttpResponseMessage
+      {
+        StatusCode = System.Net.HttpStatusCode.OK,
+        Content = new StringContent(schemaJson)
+      };
+    });
+
+    using var httpClient = new HttpClient(handler);
+    var service = new SchemaResolverService(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+
+    var mainSchemaJson = @"{
+      ""type"": ""object"",
+      ""properties"": {
+        ""ref"": { ""$ref"": """ + schemaUrl + @""" }
+      }
+    }";
+
+    // Act
+    var result = await service.ResolveAsync(mainSchemaJson, "https://example.com/", null);
+
+    // Assert
+    Assert.That(result, Is.Not.Null);
+    Assert.That(capturedRequest, Is.Not.Null);
+    Assert.That(capturedRequest!.Headers.Authorization, Is.Null);
+    Assert.That(capturedRequest.Headers.Contains("X-API-Key"), Is.False);
+  }
+
+  [Test]
+  public async Task ResolveAsync_WithApiKeyAuth_AppliesApiKeyHeader()
+  {
+    // Arrange
+    var schemaUrl = "https://example.com/schema.json";
+    var schemaJson = @"{""type"": ""object""}";
+    HttpRequestMessage? capturedRequest = null;
+
+    var handler = new MockHttpMessageHandler(async request =>
+    {
+      capturedRequest = request;
+      return new HttpResponseMessage
+      {
+        StatusCode = System.Net.HttpStatusCode.OK,
+        Content = new StringContent(schemaJson)
+      };
+    });
+
+    using var httpClient = new HttpClient(handler);
+    var service = new SchemaResolverService(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+
+    var mainSchemaJson = @"{
+      ""type"": ""object"",
+      ""properties"": {
+        ""ref"": { ""$ref"": """ + schemaUrl + @""" }
+      }
+    }";
+
+    var auth = new DataSourceAuthentication
+    {
+      ApiKey = "test-api-key",
+      ApiKeyHeader = "X-Test-Api-Key"
+    };
+
+    // Act
+    var result = await service.ResolveAsync(mainSchemaJson, "https://example.com/", auth);
+
+    // Assert
+    Assert.That(result, Is.Not.Null);
+    Assert.That(capturedRequest, Is.Not.Null);
+    Assert.That(capturedRequest!.Headers.Contains("X-Test-Api-Key"), Is.True);
+    Assert.That(capturedRequest.Headers.TryGetValues("X-Test-Api-Key", out var values), Is.True);
+    Assert.That(values, Is.Not.Null);
+    Assert.That(values!.Single(), Is.EqualTo("test-api-key"));
+  }
+
   #endregion
 
   /// <summary>
