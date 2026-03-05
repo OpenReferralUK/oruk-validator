@@ -277,8 +277,8 @@ public class SchemaResolverService : ISchemaResolverService
             continue;
           }
           request.Headers.Add(header.Key, header.Value);
-          var sanitizedHeaderNameForLogSuccess = SchemaResolverService.SanitizeStringForLogging(header.Key);
-          _logger.LogDebug("Applied custom header: {HeaderName}", sanitizedHeaderNameForLogSuccess);
+          // Do not log user-controlled header names to avoid any risk of log forging
+          _logger.LogDebug("Applied a custom header.");
         }
       }
     }
