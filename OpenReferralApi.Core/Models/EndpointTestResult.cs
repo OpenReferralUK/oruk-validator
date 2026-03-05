@@ -1,6 +1,18 @@
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 
 namespace OpenReferralApi.Core.Models;
+
+[JsonConverter(typeof(StringEnumConverter))]
+public enum EndpointTestStatus
+{
+    NotTested,
+    Skipped,
+    PassedValidation,
+    PassedWithWarnings,
+    FailedValidation,
+    Error
+}
 
 /// <summary>
 /// Represents the results of testing a single API endpoint, including HTTP tests, validation, and performance metrics
@@ -55,11 +67,11 @@ public class EndpointTestResult
     public bool IsTested { get; set; }
 
     /// <summary>
-    /// Overall status of the endpoint test ("Success", "Failed", "Error", "NotTested")
+    /// Overall status of the endpoint test.
     /// Provides a quick summary of the testing outcome for dashboard/reporting purposes
     /// </summary>
     [JsonProperty("status")]
-    public string Status { get; set; } = "NotTested";
+    public EndpointTestStatus Status { get; set; } = EndpointTestStatus.NotTested;
 
     /// <summary>
     /// Collection of HTTP test results for this endpoint, including request/response details
