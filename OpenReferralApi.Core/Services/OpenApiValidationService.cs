@@ -398,7 +398,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             // Test endpoints in dependency order - collection endpoints first, then parameterized
             foreach (var group in endpointGroups)
             {
-                _logger.LogInformation("Testing endpoint group: {GroupName} with {Count} endpoints", group.RootPath, group.Endpoints.Count);
+                _logger.LogInformation("Testing endpoint group: {GroupName} with {Count} endpoints", SanitizeForLogging(group.RootPath), group.Endpoints.Count);
 
                 var semaphore = new SemaphoreSlim(options.MaxConcurrentRequests, options.MaxConcurrentRequests);
 
@@ -425,7 +425,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 results.AddRange(parameterizedResults);
 
                 _logger.LogInformation("Completed group {GroupName}: {CollectionCount} collection + {ParamCount} parameterized endpoints",
-                    group.RootPath, group.CollectionEndpoints.Count, group.ParameterizedEndpoints.Count);
+                    SanitizeForLogging(group.RootPath), group.CollectionEndpoints.Count, group.ParameterizedEndpoints.Count);
             }
 
             _logger.LogInformation("Completed testing {Count} endpoints with intelligent dependency ordering", results.Count);
@@ -660,7 +660,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         result.IsTested = true;
 
         // Test first page (page=1)
-        _logger.LogDebug("Testing first page for {Path}", path);
+        _logger.LogDebug("Testing first page for {Path}", SanitizeForLogging(path));
         var firstPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: 1);
         var firstPageResult = await ExecuteHttpRequestAsync(firstPageUrl, method, operation, options, auth, cancellationToken);
         result.TestResults.Add(firstPageResult);
@@ -718,20 +718,20 @@ public class OpenApiValidationService : IOpenApiValidationService
             });
             NormalizeValidationResultErrors(firstPageResult.ValidationResult);
             firstPageResult.ValidationResult.IsValid = false;
-            _logger.LogWarning("Paginated endpoint {Path} returned empty feed (0 items)", path);
+            _logger.LogWarning("Paginated endpoint {Path} returned empty feed (0 items)", SanitizeForLogging(path));
             return; // No further pagination testing needed for empty feeds
         }
 
         if (paginationInfo.TotalPages.HasValue && paginationInfo.TotalPages.Value > 1)
         {
             var totalPages = paginationInfo.TotalPages.Value;
-            _logger.LogInformation("Endpoint {Path} has {TotalPages} pages, testing pagination", path, totalPages);
+            _logger.LogInformation("Endpoint {Path} has {TotalPages} pages, testing pagination", SanitizeForLogging(path), totalPages);
 
             // Test middle page if there are more than 2 pages
             if (totalPages > 2)
             {
                 var middlePage = totalPages / 2;
-                _logger.LogDebug("Testing middle page {PageNumber} for {Path}", middlePage, path);
+                _logger.LogDebug("Testing middle page {PageNumber} for {Path}", middlePage, SanitizeForLogging(path));
                 var middlePageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: middlePage);
                 var middlePageResult = await ExecuteHttpRequestAsync(middlePageUrl, method, operation, options, auth, cancellationToken);
                 result.TestResults.Add(middlePageResult);
@@ -743,7 +743,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // Test last page
-            _logger.LogDebug("Testing last page {PageNumber} for {Path}", totalPages, path);
+            _logger.LogDebug("Testing last page {PageNumber} for {Path}", totalPages, SanitizeForLogging(path));
             var lastPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: totalPages);
             var lastPageResult = await ExecuteHttpRequestAsync(lastPageUrl, method, operation, options, auth, cancellationToken);
             result.TestResults.Add(lastPageResult);
@@ -755,7 +755,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
         else
         {
-            _logger.LogDebug("Endpoint {Path} has only 1 page or pagination info not available, skipping additional page tests", path);
+            _logger.LogDebug("Endpoint {Path} has only 1 page or pagination info not available, skipping additional page tests", SanitizeForLogging(path));
         }
     }
 
@@ -1015,7 +1015,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                                 if (schema != null)
                                 {
                                     var schemaJson = schema.ToString();
-                                    _logger.LogDebug("validating against schemaJson: {schemaJson}", schemaJson);
+                                    _logger.LogDebug("validating against schema (length: {Length} chars)", schemaJson.Length);
                                     // Schema is extracted from the already-resolved OpenAPI document
                                     // All $ref references were resolved when fetching the OpenAPI spec
                                     // JsonValidatorService will create a JSchema from this resolved schema
@@ -2025,7 +2025,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 ? successfulResponse.ResponseBody[..500] + "..."
                 : successfulResponse.ResponseBody;
 
-            _logger.LogDebug("Response content preview: {ResponsePreview}", responsePreview);
+            _logger.LogDebug("Response content length: {Length} chars", successfulResponse.ResponseBody?.Length ?? 0);
 
             var ids = ExtractIdsFromResponse(successfulResponse.ResponseBody!, rootPath, operation, openApiDocument);
 
@@ -2034,23 +2034,23 @@ public class OpenApiValidationService : IOpenApiValidationService
                 // Store extracted IDs in the shared dictionary for use by dependent endpoints
                 // Note: ConcurrentDictionary is a reference type, so this modification persists to the caller
                 extractedIds[rootPath] = ids;
-                _logger.LogInformation("✅ Successfully extracted and stored {Count} IDs from {Path} for root path '{RootPath}': [{Ids}]",
-                    ids.Count, path, rootPath, string.Join(", ", ids.Take(3)) + (ids.Count > 3 ? $" and {ids.Count - 3} more..." : ""));
+                _logger.LogInformation("✅ Successfully extracted and stored {Count} IDs from {Path} for root path '{RootPath}'",
+                    ids.Count, SanitizeForLogging(path), SanitizeForLogging(rootPath));
 
                 // Verify the IDs were stored correctly
                 if (extractedIds.TryGetValue(rootPath, out var storedIds))
                 {
                     _logger.LogDebug("✅ Verified: {Count} IDs successfully stored in extractedIds dictionary for '{RootPath}'",
-                        storedIds.Count, rootPath);
+                        storedIds.Count, SanitizeForLogging(rootPath));
                 }
                 else
                 {
-                    _logger.LogWarning("⚠️ Warning: IDs extraction appeared successful but verification failed for '{RootPath}'", rootPath);
+                    _logger.LogWarning("⚠️ Warning: IDs extraction appeared successful but verification failed for '{RootPath}'", SanitizeForLogging(rootPath));
                 }
             }
             else
             {
-                _logger.LogWarning("No IDs could be extracted from response for path {Path} (root: {RootPath})", path, rootPath);
+                _logger.LogWarning("No IDs could be extracted from response for path {Path} (root: {RootPath})", SanitizeForLogging(path), SanitizeForLogging(rootPath));
             }
         }
 
@@ -2080,22 +2080,23 @@ public class OpenApiValidationService : IOpenApiValidationService
     {
         var rootPath = EndpointInfo.GetRootPath(path);
 
-        _logger.LogInformation("🔍 Looking for extracted IDs for root path '{RootPath}'. Available keys in dictionary: [{Keys}]",
-            rootPath, string.Join(", ", extractedIds.Keys));
+        _logger.LogInformation("🔍 Looking for extracted IDs for root path '{RootPath}'. Available keys count: {Count}",
+            SanitizeForLogging(rootPath), extractedIds.Keys.Count);
 
         // Try to retrieve extracted IDs from the shared dictionary populated by collection endpoint tests
         if (extractedIds.TryGetValue(rootPath, out var availableIds) && availableIds.Any())
         {
-            _logger.LogInformation("✅ Found {Count} extracted IDs for root path '{RootPath}': [{Ids}]",
-                availableIds.Count, rootPath, string.Join(", ", availableIds.Take(3)) + (availableIds.Count > 3 ? "..." : ""));
+            _logger.LogInformation("✅ Found {Count} extracted IDs for root path '{RootPath}'",
+                availableIds.Count, SanitizeForLogging(rootPath));
 
             // Test up to 10 random IDs from the available IDs
+            var maxIdsToTest = Math.Min(10, availableIds.Count);
             var random = new Random();
             var idsToTest = availableIds.Count <= 10
                 ? availableIds.ToList()
                 : availableIds.OrderBy(_ => random.Next()).Take(10).ToList();
 
-            _logger.LogInformation("🎯 Testing {Count} random IDs for endpoint {Path}", idsToTest.Count, path);
+            _logger.LogInformation("🎯 Testing {Count} random IDs for endpoint {Path}", idsToTest.Count, SanitizeForLogging(path));
 
             // Create a composite result that combines all test results
             var compositeResult = new EndpointTestResult
@@ -2115,7 +2116,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             foreach (var id in idsToTest)
             {
                 var substitutedPath = SubstitutePathParametersWithSpecificId(path, id);
-                _logger.LogInformation("Testing with ID '{Id}': {OriginalPath} → {SubstitutedPath}", id, path, substitutedPath);
+                _logger.LogDebug("Testing endpoint with extracted ID (path sanitized for security)");
 
                 var singleResult = await TestSingleEndpointAsync(substitutedPath, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, documentUri, pathItem, cancellationToken, testedId: id);
 
@@ -2152,12 +2153,12 @@ public class OpenApiValidationService : IOpenApiValidationService
         else
         {
             _logger.LogWarning("⚠️ No extracted IDs available for root path '{RootPath}'. Dictionary contains {KeyCount} entries. Marking endpoint as NotTested: {Path}",
-                rootPath, extractedIds.Count, path);
+                SanitizeForLogging(rootPath), extractedIds.Count, SanitizeForLogging(path));
 
             // Log available keys for debugging
             if (extractedIds.Any())
             {
-                _logger.LogDebug("Available ID keys in dictionary: [{Keys}]", string.Join(", ", extractedIds.Keys));
+                _logger.LogDebug("Available ID keys count in dictionary: {Count}", extractedIds.Keys.Count);
             }
 
             // Return a NotTested result instead of falling back to default values
@@ -2206,13 +2207,13 @@ public class OpenApiValidationService : IOpenApiValidationService
     {
         var ids = new List<string>();
 
-        _logger.LogInformation("Starting ID extraction from JSON response for root path: {RootPath}", rootPath);
+        _logger.LogInformation("Starting ID extraction from JSON response for root path: {RootPath}", SanitizeForLogging(rootPath));
 
         // First, try to extract ID field names from the OpenAPI schema
         var schemaIdFields = ExtractIdFieldsFromSchema(operation, openApiDocument);
         if (schemaIdFields.Any())
         {
-            _logger.LogDebug("Found ID fields from OpenAPI schema: [{IdFields}]", string.Join(", ", schemaIdFields));
+            _logger.LogDebug("Found {Count} ID fields from OpenAPI schema", schemaIdFields.Count);
         }
         else
         {
@@ -2234,7 +2235,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     var id = ExtractIdFromObject(item, schemaIdFields);
                     if (!string.IsNullOrEmpty(id))
                     {
-                        _logger.LogDebug("Found ID in array item: {Id}", id);
+                        _logger.LogDebug("Found ID in array item (ID hidden for security)");
                         ids.Add(id);
                     }
                 }
@@ -2603,7 +2604,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 if (!string.IsNullOrEmpty(header.Key) && !string.IsNullOrEmpty(header.Value))
                 {
                     request.Headers.Add(header.Key, header.Value);
-                    _logger.LogDebug("Applied custom header: {HeaderName}", header.Key);
+                    _logger.LogDebug("Applied custom header: {HeaderName}", SanitizeForLogging(header.Key));
                 }
             }
         }
