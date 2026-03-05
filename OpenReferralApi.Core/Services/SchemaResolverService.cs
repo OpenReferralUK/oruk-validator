@@ -251,14 +251,15 @@ public class SchemaResolverService : ISchemaResolverService
         if (!string.IsNullOrEmpty(header.Key) && !string.IsNullOrEmpty(header.Value))
         {
           // Validate header name before adding to prevent header injection
-          var sanitizedHeaderKey = SchemaResolverService.SanitizeStringForLogging(header.Key);
           if (!IsValidHeaderName(header.Key))
           {
-            _logger.LogWarning("Invalid custom header name, skipping: {HeaderName}", sanitizedHeaderKey);
+            var sanitizedHeaderNameForLog = SchemaResolverService.SanitizeStringForLogging(header.Key);
+            _logger.LogWarning("Invalid custom header name, skipping: {HeaderName}", sanitizedHeaderNameForLog);
             continue;
           }
           request.Headers.Add(header.Key, header.Value);
-          _logger.LogDebug("Applied custom header: {HeaderName}", sanitizedHeaderKey);
+          var sanitizedHeaderNameForLogSuccess = SchemaResolverService.SanitizeStringForLogging(header.Key);
+          _logger.LogDebug("Applied custom header: {HeaderName}", sanitizedHeaderNameForLogSuccess);
         }
       }
     }
