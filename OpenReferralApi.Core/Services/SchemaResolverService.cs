@@ -272,8 +272,8 @@ public class SchemaResolverService : ISchemaResolverService
           // Validate header name before adding to prevent header injection
           if (!IsValidHeaderName(header.Key))
           {
-            var sanitizedHeaderNameForLog = SchemaResolverService.SanitizeStringForLogging(header.Key);
-            _logger.LogWarning("Invalid custom header name, skipping: {HeaderName}", sanitizedHeaderNameForLog);
+            // Do not log the user-controlled header name itself to avoid any risk of log forging
+            _logger.LogWarning("Invalid custom header name detected in authentication configuration. Skipping this header.");
             continue;
           }
           request.Headers.Add(header.Key, header.Value);
