@@ -648,6 +648,8 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+        Assert.That(result.EndpointTests[0].IsTested, Is.True);
+        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
         Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(3));
         Assert.That(result.EndpointTests[0].TestResults.All(tr => tr.IsSuccessStatusCode), Is.True);
     }
@@ -685,10 +687,53 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+        Assert.That(result.EndpointTests[0].IsTested, Is.True);
+        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
         Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(1));
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors,
             Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithPaginatedEndpoint_TestedEndpointsDoNotRemainNotTested()
+    {
+        // Arrange
+        var json = CreateOpenApi30PaginatedSpec();
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions { TestEndpoints = true }
+        };
+
+        SetupHttpMock((req, ct) =>
+        {
+            var requestUri = req.RequestUri?.ToString() ?? string.Empty;
+            if (requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(json)
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"total_pages\":3,\"data\":[{\"id\":\"1\"}]}")
+            };
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.EndpointTests, Is.Not.Empty);
+        Assert.That(result.EndpointTests.Where(e => e.IsTested), Is.Not.Empty);
+        Assert.That(result.EndpointTests.Where(e => e.IsTested).All(e => e.Status != EndpointTestStatus.NotTested), Is.True);
     }
 
     [Test]
@@ -932,6 +977,59 @@ public class OpenApiValidationServiceTests
         Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
         Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.Skipped));
         Assert.That(result.EndpointTests[0].TestResults, Is.Empty);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithMixedRequiredAndOptionalEndpoints_TestedEndpointsNeverRemainNotTested()
+    {
+        // Arrange
+        var json = CreateOpenApi30MixedRequiredAndOptionalSpec();
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions
+            {
+                TestEndpoints = true,
+                TestOptionalEndpoints = true,
+                TreatOptionalEndpointsAsWarnings = true
+            }
+        };
+
+        SetupHttpMock((req, ct) =>
+        {
+            var requestUri = req.RequestUri?.ToString() ?? string.Empty;
+            if (requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(json)
+                };
+            }
+
+            if (requestUri.Contains("/optional", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("{}")
+            };
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.EndpointTests, Has.Count.EqualTo(2));
+        Assert.That(result.EndpointTests.All(e => e.IsTested), Is.True);
+        Assert.That(result.EndpointTests.All(e => e.Status != EndpointTestStatus.NotTested), Is.True);
+        Assert.That(result.EndpointTests.Any(e => e.Status == EndpointTestStatus.PassedValidation), Is.True);
+        Assert.That(result.EndpointTests.Any(e => e.Status == EndpointTestStatus.PassedWithWarnings), Is.True);
     }
 
     #endregion
@@ -1597,6 +1695,34 @@ public class OpenApiValidationServiceTests
                 ""version"": ""1.0.0""
             },
             ""paths"": {
+                ""/optional"": {
+                    ""get"": {
+                        ""tags"": [""Optional""],
+                        ""responses"": {
+                            ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
+    private string CreateOpenApi30MixedRequiredAndOptionalSpec()
+    {
+        return @"{
+            ""openapi"": ""3.0.0"",
+            ""info"": {
+                ""title"": ""Test API"",
+                ""version"": ""1.0.0""
+            },
+            ""paths"": {
+                ""/required"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                },
                 ""/optional"": {
                     ""get"": {
                         ""tags"": [""Optional""],
