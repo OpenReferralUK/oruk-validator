@@ -470,11 +470,125 @@ public class JsonValidatorServiceTests
         // Assert
         Assert.That(result.IsValid, Is.True);
         Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[0].age"),
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users.age"),
             "Should report additional fields in array items");
         Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[1].role"),
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users.role"),
             "Should report additional fields in array items");
+        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Message == "Field 'users.age' is not defined in the schema"),
+            "Should normalize array indices in additional-field message for users.age");
+        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Message == "Field 'users.role' is not defined in the schema"),
+            "Should normalize array indices in additional-field message for users.role");
+    }
+
+    [Test]
+    public async Task ValidateAsync_WithReportAdditionalFields_ArrayMessages_DoNotContainIndexValues()
+    {
+        // Arrange
+        var schema = new
+        {
+            type = "object",
+            properties = new
+            {
+                service_at_locations = new
+                {
+                    type = "array",
+                    items = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            id = new { type = "string" }
+                        },
+                        additionalProperties = true
+                    }
+                }
+            },
+            additionalProperties = true
+        };
+
+        var request = new ValidationRequest
+        {
+            JsonData = new
+            {
+                service_at_locations = new object[]
+                {
+                    new { id = "1", regular_schedule = "weekdays" }
+                }
+            },
+            Schema = schema,
+            Options = new ValidationOptions
+            {
+                ReportAdditionalFields = true
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateAsync(request);
+
+        // Assert
+        var additionalField = result.Errors.Single(e => e.ErrorCode == "ADDITIONAL_FIELD");
+        Assert.That(additionalField.Path, Is.EqualTo("service_at_locations.regular_schedule"));
+        Assert.That(additionalField.Message, Is.EqualTo("Field 'service_at_locations.regular_schedule' is not defined in the schema"));
+        Assert.That(additionalField.Message.Contains("[0]"), Is.False, "Message should not include array indices");
+    }
+
+    [Test]
+    public async Task ValidateAsync_WithReportAdditionalFields_ArrayDuplicates_UsesSingleNormalizedMessage()
+    {
+        // Arrange
+        var schema = new
+        {
+            type = "object",
+            properties = new
+            {
+                users = new
+                {
+                    type = "array",
+                    items = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            name = new { type = "string" }
+                        },
+                        additionalProperties = true
+                    }
+                }
+            },
+            additionalProperties = true
+        };
+
+        var request = new ValidationRequest
+        {
+            JsonData = new
+            {
+                users = new object[]
+                {
+                    new { name = "Ada", age = 36 },
+                    new { name = "Charles", age = 42 }
+                }
+            },
+            Schema = schema,
+            Options = new ValidationOptions
+            {
+                ReportAdditionalFields = true
+            }
+        };
+
+        // Act
+        var result = await _service.ValidateAsync(request);
+
+        // Assert
+        var ageWarnings = result.Errors
+            .Where(e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users.age")
+            .ToList();
+
+        Assert.That(ageWarnings.Count, Is.EqualTo(1), "Expected one deduplicated warning for users.age");
+        Assert.That(ageWarnings[0].Message, Is.EqualTo("Field 'users.age' is not defined in the schema"));
+        Assert.That(ageWarnings[0].Message.Contains("["), Is.False, "Deduplicated message should be normalized");
     }
 
     private void SetupHttpMock(string schemaJson, string dataJson)

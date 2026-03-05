@@ -1,4 +1,3 @@
-using System.Net;
 using OpenReferralApi.Core.Models;
 
 namespace OpenReferralApi.Core.Services;
@@ -8,20 +7,14 @@ namespace OpenReferralApi.Core.Services;
 /// </summary>
 public interface IOpenApiToValidationResponseMapper
 {
-    object MapToValidationResponse(OpenApiValidationResult openApiResult);
+    OpenReferralUKValidationResponse MapToValidationResponse(OpenApiValidationResult openApiResult);
 }
 
 public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMapper
 {
-    public object MapToValidationResponse(OpenApiValidationResult openApiResult)
+    public OpenReferralUKValidationResponse MapToValidationResponse(OpenApiValidationResult openApiResult)
     {
         var testSuites = new List<object>();
-
-        // Map specification validation to a test group
-        // if (openApiResult.SpecificationValidation != null)
-        // {
-        //     testSuites.Add(MapSpecificationValidation(openApiResult.SpecificationValidation));
-        // }
 
         // Map endpoint tests to test groups - separate required and optional endpoints
         if (openApiResult.EndpointTests != null && openApiResult.EndpointTests.Any())
@@ -51,75 +44,16 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
                        openApiResult?.Summary?.FailedTests == 0 && 
                        (openApiResult?.SpecificationValidation?.IsValid ?? true);
 
-        return new
+        return new OpenReferralUKValidationResponse
         {
-            service = new
+            Service = new ServiceInfo
             {
-                url = openApiResult?.Metadata?.BaseUrl ?? "",
-                isValid = isValid,
-                profile = $"{openApiResult?.SpecificationValidation?.Version ?? "Unknown"}",
-                profileReason = openApiResult?.Metadata?.ProfileReason ?? "Unknown"
+                Url = openApiResult?.Metadata?.BaseUrl ?? "",
+                IsValid = isValid,
+                Profile = $"{openApiResult?.SpecificationValidation?.Version ?? "Unknown"}",
+                ProfileReason = openApiResult?.Metadata?.ProfileReason ?? "Unknown"
             },
-            testSuites = testSuites
-        };
-    }
-
-    private object MapSpecificationValidation(OpenApiSpecificationValidation specValidation)
-    {
-        var tests = new List<object>();
-
-        // Main specification test
-        tests.Add(new
-        {
-            name = "OpenAPI Specification Structure",
-            endpoint = "",
-            description = "Validates the OpenAPI specification structure and compliance",
-            success = specValidation.IsValid,
-            messages = specValidation.Errors.Select(e => new
-            {
-                name = e.ErrorCode,
-                description = e.Severity,
-                message = e.Message,
-                errorIn = e.Path,
-                errorAt = ""
-            }).ToList()
-        });
-
-        // Quality metrics test
-        if (specValidation.QualityMetrics != null)
-        {
-            var qualityIssues = new List<object>();
-            
-            if (specValidation.QualityMetrics.DocumentationCoverage < 80)
-            {
-                qualityIssues.Add(new
-                {
-                    name = "Documentation Coverage",
-                    description = "Warning",
-                    message = $"Documentation coverage is {specValidation.QualityMetrics.DocumentationCoverage:F1}%. Target is 80% or higher.",
-                    errorIn = "info",
-                    errorAt = ""
-                });
-            }
-
-            tests.Add(new
-            {
-                name = "Documentation Quality",
-                endpoint = "",
-                description = $"Quality Score: {specValidation.QualityMetrics.QualityScore:F1}/100",
-                success = qualityIssues.Count == 0,
-                messages = qualityIssues
-            });
-        }
-
-        return new
-        {
-            name = "OpenAPI Specification Validation",
-            description = "Validates the structure, quality, and compliance of the OpenAPI specification",
-            messageLevel = "error",
-            required = true,
-            success = specValidation.IsValid,
-            tests = tests
+            TestSuites = testSuites
         };
     }
 
@@ -162,22 +96,29 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
         // If a specific test is provided (first failed), use only that one
         var testsToProcess = specificTest != null 
             ? new[] { specificTest } 
-            : endpoint.TestResults.Where(tr => tr.ValidationResult != null && !tr.ValidationResult.IsValid).Take(1);
+            : endpoint.TestResults.Where(tr => tr.ValidationResult != null && !tr.ValidationResult.IsValid);
             
+        // Track seen error paths to deduplicate errors across multiple test results
+        var seenErrorPaths = new HashSet<string>(StringComparer.Ordinal);
+        
         foreach (var testResult in testsToProcess)
         {
             if (testResult.ValidationResult != null && !testResult.ValidationResult.IsValid)
             {
-                foreach (var validationError in testResult.ValidationResult.Errors.Take(1))
+                foreach (var validationError in testResult.ValidationResult.Errors)
                 {
-                    messages.Add(new
+                    // Only add error if we haven't seen this path before
+                    if (seenErrorPaths.Add(validationError.Path))
                     {
-                        name = validationError.ErrorCode,
-                        description = validationError.Severity,
-                        message = validationError.Message,
-                        errorIn = validationError.Path,
-                        errorAt = ""
-                    });
+                        messages.Add(new
+                        {
+                            name = validationError.ErrorCode,
+                            description = validationError.Severity,
+                            message = validationError.Message,
+                            errorIn = validationError.Path,
+                            errorAt = ""
+                        });
+                    }
                 }
             }
         }

@@ -35,7 +35,7 @@ public class OpenApiDiscoveryServiceTests
             .Setup(o => o.Value)
             .Returns(new SpecificationOptions
             {
-                BaseUrl = "https://raw.githubusercontent.com/tpximpact/OpenReferralApi/refs/heads/staging/OpenReferralApi/Schemas/"
+                BaseUrl = "https://openreferraluk.org/specifications/"
             });
 
         _service = new OpenApiDiscoveryService(_httpClientFactoryMock.Object, _loggerMock.Object, _specificationOptionsMock.Object);

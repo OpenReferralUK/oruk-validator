@@ -19,6 +19,8 @@ public interface IOpenApiValidationService
 
 public class OpenApiValidationService : IOpenApiValidationService
 {
+    private static readonly Regex ArrayIndexRegex = new(@"\[[^\]]*\]", RegexOptions.Compiled);
+
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly HttpClient _httpClient;
     private readonly IJsonValidatorService _jsonValidatorService;
@@ -72,11 +74,13 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             // Get OpenAPI specification
             JObject openApiSpec;
+            bool isResolved = false;
             if (!string.IsNullOrEmpty(request.OpenApiSchema?.Url))
             {
-                var fetchedSchema = await FetchOpenApiSpecFromUrlAsync(request.OpenApiSchema.Url, request.OpenApiSchema.Authentication, cancellationToken);
-                openApiSpec = JObject.Parse(fetchedSchema.ToString());
-                // External references are already resolved by FetchOpenApiSpecFromUrlAsync
+                // Fetch OpenAPI spec but defer resolution until we know we need it
+                // This avoids expensive resolution when we're only validating spec structure
+                // or when most endpoints won't be tested
+                openApiSpec = await FetchOpenApiSpecFromUrlAsync(request.OpenApiSchema.Url, request.OpenApiSchema.Authentication, cancellationToken, resolveReferences: false);
             }
             else
             {
@@ -95,6 +99,16 @@ public class OpenApiValidationService : IOpenApiValidationService
             List<EndpointTestResult> endpointTests = new();
             if (request.Options.TestEndpoints && !string.IsNullOrEmpty(request.BaseUrl))
             {
+                // Resolve references now that we know we're actually testing endpoints
+                // This lazy approach avoids wasting resolution work when endpoints aren't tested
+                if (!isResolved)
+                {
+                    _logger.LogDebug("Resolving OpenAPI document references for endpoint testing");
+                    var resolvedContent = await _schemaResolverService.ResolveAsync(openApiSpec.ToString(), request.OpenApiSchema?.Url, request.OpenApiSchema?.Authentication);
+                    openApiSpec = JObject.Parse(resolvedContent);
+                    isResolved = true;
+                }
+
                 endpointTests = await TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, request.DataSourceAuth, request.OpenApiSchema?.Url, cancellationToken);
                 result.EndpointTests = endpointTests;
             }
@@ -178,7 +192,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Validation error: {ex.Message}",
+                Message = $"Validation error: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "VALIDATION_ERROR",
                 Severity = "Error"
             });
@@ -306,17 +320,14 @@ public class OpenApiValidationService : IOpenApiValidationService
                 };
 
                 var schemaValidation = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
-                if (!schemaValidation.IsValid)
+                if (schemaValidation.Errors.Any())
                 {
-                    foreach (var error in schemaValidation.Errors)
-                    {
-                        errors.Add(error);
-                    }
+                    errors.AddRange(schemaValidation.Errors);
                 }
 
                 // Log which schema was used for validation
                 var dialectInfo = specObject.ContainsKey("jsonSchemaDialect")
-                    ? $"using jsonSchemaDialect: {specObject["jsonSchemaDialect"]}"
+                    ? $"using jsonSchemaDialect: {SchemaResolverService.SanitizeStringForLogging(specObject["jsonSchemaDialect"]?.ToString() ?? string.Empty)}"
                     : $"using version-based schema for OpenAPI {validation.OpenApiVersion}";
                 _logger.LogDebug("Validated OpenAPI specification {DialogInfo} with schema URI: {SchemaUri}", dialectInfo, schemaUri);
             }
@@ -341,14 +352,14 @@ public class OpenApiValidationService : IOpenApiValidationService
             errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Could not validate against OpenAPI schema: {ex.Message}",
+                Message = $"Could not validate against OpenAPI schema: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "SCHEMA_VALIDATION_FAILED",
                 Severity = "Warning"
             });
         }
 
-        validation.IsValid = !errors.Any();
-        validation.Errors = errors;
+        validation.Errors = NormalizeAndDeduplicateValidationErrors(errors);
+        validation.IsValid = !validation.Errors.Any();
 
         _logger.LogInformation("OpenAPI specification validation completed. IsValid: {IsValid}, Errors: {ErrorCount}",
             validation.IsValid, validation.Errors.Count);
@@ -502,9 +513,9 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // Check if this endpoint has pagination support
-            _logger.LogDebug("Checking pagination support for {Method} {Path}", method, path);
+            _logger.LogDebug("Checking pagination support for {Method} {Path}", SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
             bool hasPagination = method == "GET" && HasPageParameter(resolvedParams);
-            _logger.LogInformation("{Method} {Path}: hasPagination={HasPagination}", method, path, hasPagination);
+            _logger.LogInformation("{Method} {Path}: hasPagination={HasPagination}", SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path), hasPagination);
 
             if (hasPagination)
             {
@@ -521,7 +532,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 result.IsTested = true;
 
                 // Check for non-success status codes and handle based on endpoint requirements
-                if (!testResult.IsSuccess)
+                if (!testResult.IsSuccessStatusCode)
                 {
                     var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
                     var statusCode = testResult.ResponseStatusCode ?? 0;
@@ -574,7 +585,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 }
 
                 // Validate response if schema is defined
-                if (testResult.IsSuccess && testResult.ResponseBody != null)
+                if (testResult.IsSuccessStatusCode && testResult.ResponseBody != null)
                 {
                     await ValidateResponseAsync(testResult, operation, openApiDocument, documentUri, options, cancellationToken);
                     result.Status = testResult.ValidationResult != null && testResult.ValidationResult.IsValid ? "Success" : "Failed";
@@ -593,25 +604,27 @@ public class OpenApiValidationService : IOpenApiValidationService
                         }
                         else if (result.Status != "Warning")
                         {
-                            result.Status = testResult.IsSuccess ? "Success" : "Warning";
+                            result.Status = testResult.IsSuccessStatusCode ? "Success" : "Warning";
                         }
                     }
                     else if (result.Status != "Warning" && result.Status != "Failed")
                     {
-                        result.Status = testResult.IsSuccess ? "Success" : "Failed";
+                        result.Status = testResult.IsSuccessStatusCode ? "Success" : "Failed";
                     }
                 }
+
+                NormalizeValidationResultErrors(testResult.ValidationResult);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error testing endpoint {Method} {Path}", method, path);
+            _logger.LogError(ex, "Error testing endpoint {Method} {Path}", SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
             result.TestResults.Add(new HttpTestResult
             {
                 RequestUrl = $"{baseUrl}{path}",
                 RequestMethod = method,
-                IsSuccess = false,
-                ErrorMessage = ex.Message,
+                IsSuccessStatusCode = false,
+                ErrorMessage = SanitizeExceptionMessage(ex.Message),
                 ResponseTime = TimeSpan.Zero
             });
             result.Status = "Error";
@@ -642,7 +655,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         JObject pathItem,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Testing paginated endpoint: {Method} {Path}", method, path);
+        _logger.LogInformation("Testing paginated endpoint: {Method} {Path}", SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
 
         result.IsTested = true;
 
@@ -652,7 +665,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         var firstPageResult = await ExecuteHttpRequestAsync(firstPageUrl, method, operation, options, auth, cancellationToken);
         result.TestResults.Add(firstPageResult);
 
-        if (!firstPageResult.IsSuccess)
+        if (!firstPageResult.IsSuccessStatusCode)
         {
             var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
             var statusCode = firstPageResult.ResponseStatusCode ?? 0;
@@ -666,6 +679,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     ErrorCode = "OPTIONAL_ENDPOINT_NON_SUCCESS",
                     Severity = "Warning"
                 });
+                NormalizeValidationResultErrors(firstPageResult.ValidationResult);
                 result.Status = "Warning";
             }
             else
@@ -677,6 +691,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     ErrorCode = "REQUIRED_ENDPOINT_FAILED",
                     Severity = "Error"
                 });
+                NormalizeValidationResultErrors(firstPageResult.ValidationResult);
                 result.Status = "Failed";
             }
             return;
@@ -701,6 +716,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 ErrorCode = "EMPTY_FEED_WARNING",
                 Severity = "Warning"
             });
+            NormalizeValidationResultErrors(firstPageResult.ValidationResult);
             firstPageResult.ValidationResult.IsValid = false;
             _logger.LogWarning("Paginated endpoint {Path} returned empty feed (0 items)", path);
             return; // No further pagination testing needed for empty feeds
@@ -720,7 +736,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 var middlePageResult = await ExecuteHttpRequestAsync(middlePageUrl, method, operation, options, auth, cancellationToken);
                 result.TestResults.Add(middlePageResult);
 
-                if (middlePageResult.IsSuccess && middlePageResult.ResponseBody != null)
+                if (middlePageResult.IsSuccessStatusCode && middlePageResult.ResponseBody != null)
                 {
                     await ValidateResponseAsync(middlePageResult, operation, openApiDocument, documentUri, options, cancellationToken);
                 }
@@ -732,7 +748,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             var lastPageResult = await ExecuteHttpRequestAsync(lastPageUrl, method, operation, options, auth, cancellationToken);
             result.TestResults.Add(lastPageResult);
 
-            if (lastPageResult.IsSuccess && lastPageResult.ResponseBody != null)
+            if (lastPageResult.IsSuccessStatusCode && lastPageResult.ResponseBody != null)
             {
                 await ValidateResponseAsync(lastPageResult, operation, openApiDocument, documentUri, options, cancellationToken);
             }
@@ -836,7 +852,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             {
                 var name = paramObj["name"]?.ToString();
                 var inLocation = paramObj["in"]?.ToString();
-                _logger.LogDebug("Checking param: name={Name}, in={In}", name, inLocation);
+                _logger.LogDebug("Checking param: name={Name}, in={In}", SchemaResolverService.SanitizeStringForLogging(name ?? string.Empty), SchemaResolverService.SanitizeStringForLogging(inLocation ?? string.Empty));
 
                 if (name?.Equals("page", StringComparison.OrdinalIgnoreCase) == true &&
                     inLocation?.Equals("query", StringComparison.OrdinalIgnoreCase) == true)
@@ -865,7 +881,11 @@ public class OpenApiValidationService : IOpenApiValidationService
             foreach (var param in pathParams)
             {
                 resolvedParams.Add(param);
-                _logger.LogDebug("Path-level param: {Param}", param.ToString());
+                if (param is JObject paramObj)
+                {
+                    var paramName = paramObj["name"]?.ToString();
+                    _logger.LogDebug("Path-level param: {Name}", SchemaResolverService.SanitizeStringForLogging(paramName ?? string.Empty));
+                }
             }
         }
 
@@ -876,7 +896,11 @@ public class OpenApiValidationService : IOpenApiValidationService
             foreach (var param in operationParams)
             {
                 resolvedParams.Add(param);
-                _logger.LogDebug("Operation-level param: {Param}", param.ToString());
+                if (param is JObject paramObj)
+                {
+                    var paramName = paramObj["name"]?.ToString();
+                    _logger.LogDebug("Operation-level param: {Name}", SchemaResolverService.SanitizeStringForLogging(paramName ?? string.Empty));
+                }
             }
         }
 
@@ -900,8 +924,8 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             using var request = new HttpRequestMessage(new HttpMethod(method), url);
 
-            // Apply authentication if not skipped and auth is provided
-            if (!options.SkipAuthentication && authentication != null)
+            // Apply authentication if provided
+            if (authentication != null)
             {
                 ApplyAuthenticationHeaders(request, authentication);
             }
@@ -940,7 +964,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             // Populate basic result fields
             testResult.ResponseTime = timeToHeaders + contentTransferStopwatch.Elapsed;
             testResult.ResponseStatusCode = (int)response.StatusCode;
-            testResult.IsSuccess = response.IsSuccessStatusCode;
+            testResult.IsSuccessStatusCode = response.IsSuccessStatusCode;
             testResult.ResponseBody = responseBody;
 
             // Populate performance metrics (include best-effort DNS/TCP/TLS measurements if available)
@@ -957,8 +981,8 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             stopwatch.Stop();
             testResult.ResponseTime = stopwatch.Elapsed;
-            testResult.IsSuccess = false;
-            testResult.ErrorMessage = ex.Message;
+            testResult.IsSuccessStatusCode = false;
+            testResult.ErrorMessage = SanitizeExceptionMessage(ex.Message);
         }
 
         return testResult;
@@ -992,7 +1016,9 @@ public class OpenApiValidationService : IOpenApiValidationService
                                 {
                                     var schemaJson = schema.ToString();
                                     _logger.LogDebug("validating against schemaJson: {schemaJson}", schemaJson);
-                                    // Use standard validation - SchemaResolverService handles all reference resolution
+                                    // Schema is extracted from the already-resolved OpenAPI document
+                                    // All $ref references were resolved when fetching the OpenAPI spec
+                                    // JsonValidatorService will create a JSchema from this resolved schema
                                     var validationRequest = new ValidationRequest
                                     {
                                         JsonData = JsonConvert.DeserializeObject(testResult.ResponseBody ?? "{}"),
@@ -1004,6 +1030,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                                     };
                                     var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
                                     testResult.ValidationResult = validationResult;
+                                    NormalizeValidationResultErrors(testResult.ValidationResult);
                                 }
                             }
                         }
@@ -1013,8 +1040,68 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not validate response for {Url}", testResult.RequestUrl);
+            _logger.LogWarning(ex, "Could not validate response for {Url}", SchemaResolverService.SanitizeUrlForLogging(testResult.RequestUrl ?? string.Empty));
         }
+    }
+
+    private static void NormalizeValidationResultErrors(ValidationResult? validationResult)
+    {
+        if (validationResult?.Errors == null || validationResult.Errors.Count == 0)
+        {
+            return;
+        }
+
+        validationResult.Errors = NormalizeAndDeduplicateValidationErrors(validationResult.Errors);
+    }
+
+    private static List<ValidationError> NormalizeAndDeduplicateValidationErrors(IEnumerable<ValidationError> errors)
+    {
+        var capacity = errors is ICollection<ValidationError> collection ? collection.Count : 0;
+        var seenPaths = capacity > 0
+            ? new HashSet<string>(capacity, StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+        var deduplicatedErrors = capacity > 0
+            ? new List<ValidationError>(capacity)
+            : new List<ValidationError>();
+
+        foreach (var error in errors)
+        {
+            var normalizedPath = NormalizeValidationErrorText(error.Path);
+
+            // Keep the first validation error encountered for each normalized path.
+            if (!seenPaths.Add(normalizedPath))
+            {
+                continue;
+            }
+
+            // Normalize message only for kept entries to avoid work for discarded duplicates.
+            deduplicatedErrors.Add(new ValidationError
+            {
+                Path = normalizedPath,
+                Message = NormalizeValidationErrorText(error.Message),
+                ErrorCode = error.ErrorCode,
+                Severity = error.Severity,
+                LineNumber = error.LineNumber,
+                ColumnNumber = error.ColumnNumber
+            });
+        }
+
+        return deduplicatedErrors;
+    }
+
+    private static string NormalizeValidationErrorText(string? input)
+    {
+        if (string.IsNullOrEmpty(input))
+        {
+            return string.Empty;
+        }
+
+        if (input.IndexOf('[') < 0)
+        {
+            return input;
+        }
+
+        return ArrayIndexRegex.Replace(input, string.Empty);
     }
 
     /// <summary>
@@ -1049,7 +1136,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Invalid JSON format: {ex.Message}",
+                Message = $"Invalid JSON format: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "INVALID_JSON",
                 Severity = "Error"
             });
@@ -1059,7 +1146,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Schema validation error: {ex.Message}",
+                Message = $"Schema validation error: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "SCHEMA_VALIDATION_ERROR",
                 Severity = "Error"
             });
@@ -1068,7 +1155,95 @@ public class OpenApiValidationService : IOpenApiValidationService
         return errors;
     }
 
-    private async Task<JSchema> FetchOpenApiSpecFromUrlAsync(string specUrl, DataSourceAuthentication? auth, CancellationToken cancellationToken)
+    /// <summary>
+    /// Sanitizes exception messages to prevent log injection attacks by removing control characters.
+    /// </summary>
+    private static string SanitizeExceptionMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+            return string.Empty;
+
+        // Remove control characters (including CR/LF) to prevent log forging
+        var sanitized = new string(message.Where(c => !char.IsControl(c)).ToArray());
+
+        // Limit length to prevent log flooding
+        const int maxLength = 500;
+        if (sanitized.Length > maxLength)
+        {
+            sanitized = sanitized.Substring(0, maxLength) + "...(truncated)";
+        }
+
+        return sanitized;
+    }
+
+    private static DataSourceAuthentication? ValidateAuthentication(DataSourceAuthentication? auth)
+    {
+        if (auth == null)
+        {
+            return null;
+        }
+
+        // Perform stricter validation on the authentication configuration.
+        // If it fails validation, treat it as if no authentication was provided.
+        var hasApiKey = !string.IsNullOrWhiteSpace(auth.ApiKey);
+        var hasBearer = !string.IsNullOrWhiteSpace(auth.BearerToken);
+        var hasBasic = auth.BasicAuth != null
+                       && !string.IsNullOrWhiteSpace(auth.BasicAuth.Username)
+                       && !string.IsNullOrWhiteSpace(auth.BasicAuth.Password);
+        var hasCustomHeaders = auth.CustomHeaders != null && auth.CustomHeaders.Count > 0;
+
+        var mechanismsCount = 0;
+        if (hasApiKey) mechanismsCount++;
+        if (hasBearer) mechanismsCount++;
+        if (hasBasic) mechanismsCount++;
+        if (hasCustomHeaders) mechanismsCount++;
+
+        // Require at least one and at most one primary authentication mechanism.
+        if (mechanismsCount != 1)
+        {
+            return null;
+        }
+
+        // Return a sanitised copy so that downstream code does not operate on the original user object.
+        var validated = new DataSourceAuthentication();
+
+        if (hasApiKey)
+        {
+            validated.ApiKey = auth.ApiKey!.Trim();
+        }
+        else if (hasBearer)
+        {
+            validated.BearerToken = auth.BearerToken!.Trim();
+        }
+        else if (hasBasic)
+        {
+            validated.BasicAuth = new BasicAuthentication
+            {
+                Username = auth.BasicAuth!.Username.Trim(),
+                Password = auth.BasicAuth.Password
+            };
+        }
+        else if (hasCustomHeaders)
+        {
+            // Copy only non-empty header names and values.
+            validated.CustomHeaders = new Dictionary<string, string>();
+            foreach (var kvp in auth.CustomHeaders!)
+            {
+                if (!string.IsNullOrWhiteSpace(kvp.Key) && !string.IsNullOrWhiteSpace(kvp.Value))
+                {
+                    validated.CustomHeaders[kvp.Key.Trim()] = kvp.Value;
+                }
+            }
+            if (validated.CustomHeaders.Count == 0)
+            {
+                return null;
+            }
+        }
+
+        return validated;
+    }
+
+    private async Task<JObject> FetchOpenApiSpecFromUrlAsync(string specUrl, DataSourceAuthentication? auth, CancellationToken cancellationToken, bool resolveReferences = true)
     {
         try
         {
@@ -1082,10 +1257,11 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             using var request = new HttpRequestMessage(HttpMethod.Get, specUrl);
 
-            // Apply authentication if provided
-            if (auth != null)
+            // Apply authentication only if it passes strict validation
+            var validatedAuth = ValidateAuthentication(auth);
+            if (validatedAuth != null)
             {
-                ApplyAuthentication(request, auth);
+                ApplyAuthentication(request, validatedAuth);
             }
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -1093,9 +1269,17 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            // Use SchemaResolverService for consistent reference resolution and JSchema creation
-            // Pass authentication so nested schema references can also be authenticated
-            return await _schemaResolverService.CreateSchemaFromJsonAsync(content, specUrl, auth, cancellationToken);
+            // Only resolve references if requested (lazy evaluation)
+            // This avoids expensive resolution when we're only validating spec structure
+            // or when endpoints won't be tested
+            if (resolveReferences)
+            {
+                var resolvedContent = await _schemaResolverService.ResolveAsync(content, specUrl, validatedAuth);
+                return JObject.Parse(resolvedContent);
+            }
+
+            // Return unresolved document for spec validation or later lazy resolution
+            return JObject.Parse(content);
         }
         catch (Exception ex)
         {
@@ -1183,9 +1367,9 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Analyzes the structure of the OpenAPI specification components
     /// </summary>
-    private OpenApiSchemaAnalysis AnalyzeSchemaStructure(JObject specObject)
+    private SchemaAnalysis AnalyzeSchemaStructure(JObject specObject)
     {
-        var analysis = new OpenApiSchemaAnalysis();
+        var analysis = new SchemaAnalysis();
 
         try
         {
@@ -1236,6 +1420,36 @@ public class OpenApiValidationService : IOpenApiValidationService
                             analysis.RequestBodyCount = requestBodiesObject.Count;
                         }
                     }
+
+                    // Count headers
+                    if (componentsObject.ContainsKey("headers"))
+                    {
+                        var headers = componentsObject["headers"];
+                        if (headers is JObject headersObject)
+                        {
+                            analysis.HeaderCount = headersObject.Count;
+                        }
+                    }
+
+                    // Count links
+                    if (componentsObject.ContainsKey("links"))
+                    {
+                        var links = componentsObject["links"];
+                        if (links is JObject linksObject)
+                        {
+                            analysis.LinkCount = linksObject.Count;
+                        }
+                    }
+
+                    // Count callbacks
+                    if (componentsObject.ContainsKey("callbacks"))
+                    {
+                        var callbacks = componentsObject["callbacks"];
+                        if (callbacks is JObject callbacksObject)
+                        {
+                            analysis.CallbackCount = callbacksObject.Count;
+                        }
+                    }
                 }
             }
 
@@ -1248,6 +1462,9 @@ public class OpenApiValidationService : IOpenApiValidationService
                     analysis.SchemaCount = definitionsObject.Count;
                 }
             }
+
+            // Count examples throughout the specification
+            analysis.ExampleCount = CountExamplesInSpec(specObject);
 
             // Count references (simplified)
             var specJson = specObject.ToString();
@@ -1262,11 +1479,131 @@ public class OpenApiValidationService : IOpenApiValidationService
     }
 
     /// <summary>
+    /// Counts all example definitions throughout the OpenAPI specification
+    /// </summary>
+    private int CountExamplesInSpec(JObject specObject)
+    {
+        int exampleCount = 0;
+
+        try
+        {
+            // Count examples in components section (OpenAPI 3.1+)
+            if (specObject.ContainsKey("components"))
+            {
+                var components = specObject["components"];
+                if (components is JObject componentsObject && componentsObject.ContainsKey("examples"))
+                {
+                    var examples = componentsObject["examples"];
+                    if (examples is JObject examplesObject)
+                    {
+                        exampleCount += examplesObject.Count;
+                    }
+                }
+            }
+
+            // Count examples in paths - request bodies and responses
+            if (specObject.ContainsKey("paths"))
+            {
+                var paths = specObject["paths"];
+                if (paths is JObject pathsObject)
+                {
+                    foreach (var path in pathsObject.Properties())
+                    {
+                        if (path.Value is JObject pathObject)
+                        {
+                            // Check operations (get, post, put, delete, etc.)
+                            foreach (var operation in pathObject.Properties())
+                            {
+                                if (operation.Value is JObject operationObject)
+                                {
+                                    // Count examples in request body
+                                    if (operationObject.ContainsKey("requestBody"))
+                                    {
+                                        var requestBody = operationObject["requestBody"];
+                                        if (requestBody is JObject requestBodyObject && requestBodyObject.ContainsKey("content"))
+                                        {
+                                            var content = requestBodyObject["content"];
+                                            if (content is JObject contentObject)
+                                            {
+                                                foreach (var mediaType in contentObject.Properties())
+                                                {
+                                                    if (mediaType.Value is JObject mediaTypeObject)
+                                                    {
+                                                        if (mediaTypeObject.ContainsKey("example"))
+                                                        {
+                                                            exampleCount++;
+                                                        }
+                                                        if (mediaTypeObject.ContainsKey("examples"))
+                                                        {
+                                                            var examples = mediaTypeObject["examples"];
+                                                            if (examples is JObject examplesObject)
+                                                            {
+                                                                exampleCount += examplesObject.Count;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Count examples in responses
+                                    if (operationObject.ContainsKey("responses"))
+                                    {
+                                        var responses = operationObject["responses"];
+                                        if (responses is JObject responsesObject)
+                                        {
+                                            foreach (var response in responsesObject.Properties())
+                                            {
+                                                if (response.Value is JObject responseObject && responseObject.ContainsKey("content"))
+                                                {
+                                                    var content = responseObject["content"];
+                                                    if (content is JObject contentObject)
+                                                    {
+                                                        foreach (var mediaType in contentObject.Properties())
+                                                        {
+                                                            if (mediaType.Value is JObject mediaTypeObject)
+                                                            {
+                                                                if (mediaTypeObject.ContainsKey("example"))
+                                                                {
+                                                                    exampleCount++;
+                                                                }
+                                                                if (mediaTypeObject.ContainsKey("examples"))
+                                                                {
+                                                                    var examples = mediaTypeObject["examples"];
+                                                                    if (examples is JObject examplesObject)
+                                                                    {
+                                                                        exampleCount += examplesObject.Count;
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Error counting examples in specification");
+        }
+
+        return exampleCount;
+    }
+
+    /// <summary>
     /// Analyzes quality metrics of the OpenAPI specification
     /// </summary>
-    private OpenApiQualityMetrics AnalyzeQualityMetrics(JObject specObject)
+    private QualityMetrics AnalyzeQualityMetrics(JObject specObject)
     {
-        var metrics = new OpenApiQualityMetrics();
+        var metrics = new QualityMetrics();
 
         try
         {
@@ -1429,7 +1766,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         return false;
     }
 
-    private void CountSchemaDescriptions(JObject specObject, OpenApiQualityMetrics metrics)
+    private void CountSchemaDescriptions(JObject specObject, QualityMetrics metrics)
     {
         // Count schemas in components (OpenAPI 3.x)
         if (specObject.ContainsKey("components"))
@@ -1466,7 +1803,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
     }
 
-    private void CalculateQualityScore(OpenApiQualityMetrics metrics)
+    private void CalculateQualityScore(QualityMetrics metrics)
     {
         double score = 0;
         int factors = 0;
@@ -1509,16 +1846,16 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// <summary>
     /// Generates recommendations based on analysis results
     /// </summary>
-    private List<OpenApiRecommendation> GenerateRecommendations(JObject specObject, List<ValidationError> errors)
+    private List<Recommendation> GenerateRecommendations(JObject specObject, List<ValidationError> errors)
     {
-        var recommendations = new List<OpenApiRecommendation>();
+        var recommendations = new List<Recommendation>();
 
         try
         {
             // Convert errors to recommendations
             foreach (var error in errors.Where(e => e.Severity == "Error"))
             {
-                recommendations.Add(new OpenApiRecommendation
+                recommendations.Add(new Recommendation
                 {
                     Type = "Error",
                     Category = "Validation",
@@ -1533,7 +1870,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             // Convert warnings to recommendations
             foreach (var error in errors.Where(e => e.Severity == "Warning"))
             {
-                recommendations.Add(new OpenApiRecommendation
+                recommendations.Add(new Recommendation
                 {
                     Type = "Warning",
                     Category = "Best Practice",
@@ -1556,31 +1893,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         return recommendations;
     }
 
-    /// <summary>
-    /// Represents an endpoint group with collection and parameterized endpoints
-    /// </summary>
-    private class EndpointGroup
-    {
-        public string RootPath { get; set; } = string.Empty;
-        public List<EndpointInfo> CollectionEndpoints { get; set; } = new();
-        public List<EndpointInfo> ParameterizedEndpoints { get; set; } = new();
-        public List<EndpointInfo> Endpoints => CollectionEndpoints.Concat(ParameterizedEndpoints).ToList();
-    }
-
-    /// <summary>
-    /// Represents a single endpoint with its metadata
-    /// </summary>
-    private class EndpointInfo
-    {
-        public string Path { get; set; } = string.Empty;
-        public string Method { get; set; } = string.Empty;
-        public JObject Operation { get; set; } = new();
-        public JObject PathItem { get; set; } = new();
-        public bool IsParameterized => Path.Contains('{');
-        public string RootPath => GetRootPath(Path);
-    }
-
-    private void AddQualityRecommendations(JObject specObject, List<OpenApiRecommendation> recommendations)
+    private void AddQualityRecommendations(JObject specObject, List<Recommendation> recommendations)
     {
         // Check for missing info fields
         if (!specObject.ContainsKey("info") || specObject["info"] is not JObject infoObject)
@@ -1590,7 +1903,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         if (!infoObject.ContainsKey("description") || string.IsNullOrWhiteSpace(infoObject["description"]?.ToString()))
         {
-            recommendations.Add(new OpenApiRecommendation
+            recommendations.Add(new Recommendation
             {
                 Type = "Improvement",
                 Category = "Documentation",
@@ -1604,7 +1917,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         if (!infoObject.ContainsKey("contact"))
         {
-            recommendations.Add(new OpenApiRecommendation
+            recommendations.Add(new Recommendation
             {
                 Type = "Improvement",
                 Category = "Documentation",
@@ -1618,7 +1931,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         if (!infoObject.ContainsKey("license"))
         {
-            recommendations.Add(new OpenApiRecommendation
+            recommendations.Add(new Recommendation
             {
                 Type = "Improvement",
                 Category = "Legal",
@@ -1688,27 +2001,6 @@ public class OpenApiValidationService : IOpenApiValidationService
     }
 
     /// <summary>
-    /// Gets the root path from a full path (e.g., /services/{id} -> /services)
-    /// </summary>
-    private static string GetRootPath(string path)
-    {
-        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length == 0)
-            return "/";
-
-        // Take segments until we hit a parameter
-        var rootSegments = new List<string>();
-        foreach (var segment in segments)
-        {
-            if (segment.StartsWith('{') && segment.EndsWith('}'))
-                break;
-            rootSegments.Add(segment);
-        }
-
-        return rootSegments.Any() ? "/" + string.Join("/", rootSegments) : "/";
-    }
-
-    /// <summary>
     /// Tests an endpoint and extracts IDs from the response for use by dependent endpoints.
     /// The extractedIds dictionary is updated with any IDs found in the response.
     /// </summary>
@@ -1731,13 +2023,14 @@ public class OpenApiValidationService : IOpenApiValidationService
         var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, documentUri, pathItem, cancellationToken);
 
         // Extract IDs from successful GET responses for dependency testing
-        if (method == "GET" && result.TestResults.Any(r => r.IsSuccess && !string.IsNullOrEmpty(r.ResponseBody)))
+        if (method == "GET" && result.TestResults.Any(r => r.IsSuccessStatusCode && !string.IsNullOrEmpty(r.ResponseBody)))
         {
-            var rootPath = GetRootPath(path);
-            var successfulResponse = result.TestResults.First(r => r.IsSuccess);
+            var rootPath = EndpointInfo.GetRootPath(path);
+            var successfulResponse = result.TestResults.First(r => r.IsSuccessStatusCode);
 
             _logger.LogInformation("Processing HTTP response from {Url} (Status: {StatusCode}, ResponseSize: {Size} chars)",
-                successfulResponse.RequestUrl, successfulResponse.ResponseStatusCode,
+                SchemaResolverService.SanitizeUrlForLogging(successfulResponse.RequestUrl ?? string.Empty),
+                successfulResponse.ResponseStatusCode,
                 successfulResponse.ResponseBody?.Length ?? 0);
 
             // Log first 500 characters of response for debugging
@@ -1798,7 +2091,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         ConcurrentDictionary<string, List<string>> extractedIds, SemaphoreSlim semaphore,
         JObject openApiDocument, string? documentUri, JObject pathItem, CancellationToken cancellationToken)
     {
-        var rootPath = GetRootPath(path);
+        var rootPath = EndpointInfo.GetRootPath(path);
 
         _logger.LogInformation("🔍 Looking for extracted IDs for root path '{RootPath}'. Available keys in dictionary: [{Keys}]",
             rootPath, string.Join(", ", extractedIds.Keys));
@@ -1881,7 +2174,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // Return a NotTested result instead of falling back to default values
-            return new EndpointTestResult
+            var notTestedResult = new EndpointTestResult
             {
                 Path = path,
                 Method = method,
@@ -1893,7 +2186,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 IsTested = false,
                 TestResults = new List<HttpTestResult>(){
                     new() {
-                        IsSuccess = false,
+                        IsSuccessStatusCode = false,
                         RequestUrl = $"{baseUrl}{path}",
                         ErrorMessage = "No extracted IDs available for parameter substitution. Endpoint was not tested.",
                         ValidationResult= new ValidationResult
@@ -1913,6 +2206,9 @@ public class OpenApiValidationService : IOpenApiValidationService
                     }
                 }
             };
+
+            NormalizeValidationResultErrors(notTestedResult.TestResults.FirstOrDefault()?.ValidationResult);
+            return notTestedResult;
         }
     }
 
@@ -2283,7 +2579,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         // Apply Basic Authentication
-        if (authentication.BasicAuth != null && 
+        if (authentication.BasicAuth != null &&
             !string.IsNullOrEmpty(authentication.BasicAuth.Username))
         {
             var credentials = Convert.ToBase64String(
