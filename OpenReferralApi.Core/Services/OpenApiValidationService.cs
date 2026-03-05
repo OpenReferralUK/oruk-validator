@@ -1295,7 +1295,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         if (!string.IsNullOrEmpty(auth.ApiKey))
         {
             request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
-            _logger.LogDebug("Applied API Key authentication with header: {Header}", auth.ApiKeyHeader);
+            _logger.LogDebug("Applied API Key authentication with header: {Header}", SanitizeForLogging(auth.ApiKeyHeader));
         }
 
         // Apply Bearer Token authentication
@@ -1311,7 +1311,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             var credentials = Convert.ToBase64String(
                 Encoding.ASCII.GetBytes($"{auth.BasicAuth.Username}:{auth.BasicAuth.Password}"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-            _logger.LogDebug("Applied Basic authentication for user: {Username}", auth.BasicAuth.Username);
+            _logger.LogDebug("Applied Basic authentication for user: {Username}", SanitizeForLogging(auth.BasicAuth.Username));
         }
 
         // Apply custom headers
@@ -1320,9 +1320,22 @@ public class OpenApiValidationService : IOpenApiValidationService
             foreach (var header in auth.CustomHeaders)
             {
                 request.Headers.Add(header.Key, header.Value);
-                _logger.LogDebug("Applied custom header: {HeaderName}", header.Key);
+                _logger.LogDebug("Applied custom header: {HeaderName}", SanitizeForLogging(header.Key));
             }
         }
+    }
+
+    private static string SanitizeForLogging(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        // Remove CR and LF to prevent log forging via line breaks
+        return value
+            .Replace("\r", string.Empty)
+            .Replace("\n", string.Empty);
     }
 
     private OpenApiValidationSummary BuildTestSummary(OpenApiSpecificationValidation? specValidation, List<EndpointTestResult> endpointTests)
