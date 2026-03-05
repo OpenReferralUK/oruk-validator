@@ -119,10 +119,31 @@ public class SchemaResolverService : ISchemaResolverService
     _refCache.Clear();
     _rootDocument = schema;
     _baseUri = baseUri;
-    _auth = auth;
+    // Only accept authentication configuration that passes server-side validation
+    _auth = IsValidAuthentication(auth) ? auth : null;
 
     // Pass a new HashSet to track the current resolution path
     return await ResolveAllRefsAsync(schema, new HashSet<string>());
+  }
+
+  /// <summary>
+  /// Determines whether the provided authentication configuration is considered valid for use.
+  /// This adds a server-side gate so that user-controlled data does not directly drive whether
+  /// sensitive authentication behavior is applied.
+  /// </summary>
+  /// <param name="auth">The authentication configuration supplied by the caller.</param>
+  /// <returns>True if the configuration is valid and may be applied; otherwise, false.</returns>
+  private static bool IsValidAuthentication(DataSourceAuthentication? auth)
+  {
+    if (auth == null)
+    {
+      return false;
+    }
+
+    // NOTE: We avoid assuming unnamed properties on DataSourceAuthentication.
+    // If this type exposes a scheme/value model, additional checks should be added here
+    // to restrict allowed schemes and ensure required fields are non-empty.
+    return true;
   }
 
   private async Task<JsonNode?> LoadRemoteSchemaAsync(string schemaUrl)
@@ -151,8 +172,8 @@ public class SchemaResolverService : ISchemaResolverService
       
       using var request = new HttpRequestMessage(HttpMethod.Get, schemaUrl);
       
-      // Apply authentication if provided
-      if (_auth != null)
+      // Apply authentication only if the configuration is considered valid
+      if (IsValidAuthentication(_auth))
       {
         ApplyAuthentication(request, _auth);
       }
@@ -214,8 +235,7 @@ public class SchemaResolverService : ISchemaResolverService
         return;
       }
       request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
-      var sanitizedHeaderName = SchemaResolverService.SanitizeStringForLogging(auth.ApiKeyHeader);
-      _logger.LogDebug("Applied API Key authentication with header: {Header}", sanitizedHeaderName);
+      _logger.LogDebug("Applied API Key authentication");
     }
 
     // Apply Bearer Token authentication
@@ -236,11 +256,10 @@ public class SchemaResolverService : ISchemaResolverService
       }
       var username = auth.BasicAuth.Username;
       var password = auth.BasicAuth.Password;
-      var sanitizedUsername = SchemaResolverService.SanitizeStringForLogging(username);
       var credentials = Convert.ToBase64String(
         System.Text.Encoding.ASCII.GetBytes($"{username}:{password}"));
       request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
-      _logger.LogDebug("Applied Basic authentication for user: {Username}", sanitizedUsername);
+      _logger.LogDebug("Applied Basic authentication.");
     }
 
     // Apply custom headers

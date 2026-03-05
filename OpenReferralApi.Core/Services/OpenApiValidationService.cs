@@ -1325,19 +1325,6 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
     }
 
-    private static string SanitizeForLogging(string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-        {
-            return string.Empty;
-        }
-
-        // Remove CR and LF to prevent log forging via line breaks
-        return value
-            .Replace("\r", string.Empty)
-            .Replace("\n", string.Empty);
-    }
-
     private OpenApiValidationSummary BuildTestSummary(OpenApiSpecificationValidation? specValidation, List<EndpointTestResult> endpointTests)
     {
         var summary = new OpenApiValidationSummary
@@ -2557,6 +2544,25 @@ public class OpenApiValidationService : IOpenApiValidationService
     }
 
     /// <summary>
+    /// Sanitizes a string for safe inclusion in log messages by removing control characters.
+    /// </summary>
+    /// <param name="value">The value to sanitize.</param>
+    /// <returns>A sanitized string safe for logging.</returns>
+    private static string SanitizeForLogging(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        // Remove carriage returns and newlines to prevent log forging
+        var sanitized = value.Replace("\r", string.Empty)
+                             .Replace("\n", string.Empty);
+
+        return sanitized;
+    }
+
+    /// <summary>
     /// Applies authentication to an HTTP request based on the provided authentication configuration
     /// Supports API key, bearer token, basic authentication, and custom headers
     /// </summary>
@@ -2569,7 +2575,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             var headerName = string.IsNullOrEmpty(authentication.ApiKeyHeader) ? "X-API-Key" : authentication.ApiKeyHeader;
             request.Headers.Add(headerName, authentication.ApiKey);
-            _logger.LogDebug("Applied API Key authentication with header: {HeaderName}", headerName);
+            _logger.LogDebug("Applied API Key authentication with header: {HeaderName}", SanitizeForLogging(headerName));
         }
 
         // Apply Bearer Token authentication
@@ -2586,7 +2592,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             var credentials = Convert.ToBase64String(
                 Encoding.ASCII.GetBytes($"{authentication.BasicAuth.Username}:{authentication.BasicAuth.Password ?? string.Empty}"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-            _logger.LogDebug("Applied Basic authentication for user: {Username}", authentication.BasicAuth.Username);
+            _logger.LogDebug("Applied Basic authentication for user: {Username}", SanitizeForLogging(authentication.BasicAuth.Username));
         }
 
         // Apply Custom Headers
