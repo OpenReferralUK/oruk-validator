@@ -140,6 +140,13 @@ public class SchemaResolverService : ISchemaResolverService
 
     try
     {
+      // Validate URL before making HTTP request to prevent SSRF attacks
+      if (!Uri.TryCreate(schemaUrl, UriKind.Absolute, out var schemaUri) ||
+          (schemaUri.Scheme != Uri.UriSchemeHttp && schemaUri.Scheme != Uri.UriSchemeHttps))
+      {
+        throw new ArgumentException($"Invalid schema URL: Only HTTP and HTTPS URLs are allowed", nameof(schemaUrl));
+      }
+      
       _logger.LogDebug("Fetching remote schema: {SchemaUrl}", SanitizeUrlForLogging(schemaUrl));
       
       using var request = new HttpRequestMessage(HttpMethod.Get, schemaUrl);
@@ -200,6 +207,12 @@ public class SchemaResolverService : ISchemaResolverService
     // Apply API Key authentication
     if (!string.IsNullOrEmpty(auth.ApiKey) && !string.IsNullOrEmpty(auth.ApiKeyHeader))
     {
+      // Validate header name before using it to prevent header injection
+      if (!IsValidHeaderName(auth.ApiKeyHeader))
+      {
+        _logger.LogWarning("Invalid API key header name provided, skipping API key authentication");
+        return;
+      }
       var sanitizedHeaderName = SchemaResolverService.SanitizeStringForLogging(auth.ApiKeyHeader);
       request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
       _logger.LogDebug("Applied API Key authentication with header: {Header}", sanitizedHeaderName);
@@ -215,6 +228,12 @@ public class SchemaResolverService : ISchemaResolverService
     // Apply Basic authentication
     if (auth.BasicAuth != null && !string.IsNullOrEmpty(auth.BasicAuth.Username) && !string.IsNullOrEmpty(auth.BasicAuth.Password))
     {
+      // Validate username to prevent injection attacks in credentials
+      if (auth.BasicAuth.Username.Any(c => c == ':' || char.IsControl(c)))
+      {
+        _logger.LogWarning("Invalid characters in username for Basic authentication");
+        return;
+      }
       var username = auth.BasicAuth.Username;
       var password = auth.BasicAuth.Password;
       var credentials = Convert.ToBase64String(
@@ -231,12 +250,47 @@ public class SchemaResolverService : ISchemaResolverService
       {
         if (!string.IsNullOrEmpty(header.Key) && !string.IsNullOrEmpty(header.Value))
         {
+          // Validate header name before adding to prevent header injection
+          if (!IsValidHeaderName(header.Key))
+          {
+            var sanitizedBadHeader = SchemaResolverService.SanitizeStringForLogging(header.Key);
+            _logger.LogWarning("Invalid custom header name, skipping: {HeaderName}", sanitizedBadHeader);
+            continue;
+          }
           request.Headers.Add(header.Key, header.Value);
           var sanitizedHeaderName = SchemaResolverService.SanitizeStringForLogging(header.Key);
           _logger.LogDebug("Applied custom header: {HeaderName}", sanitizedHeaderName);
         }
       }
     }
+  }
+
+  /// <summary>
+  /// Validates that a header name is safe to use and doesn't override sensitive headers
+  /// </summary>
+  private static bool IsValidHeaderName(string headerName)
+  {
+    if (string.IsNullOrWhiteSpace(headerName))
+      return false;
+
+    // Check for valid header name characters (RFC 7230)
+    // Header names should only contain visible ASCII characters except delimiters
+    if (headerName.Any(c => c < 33 || c > 126 || "()<>@,;:\\\"/[]?={}".Contains(c)))
+      return false;
+
+    // Prevent overriding sensitive headers
+    var sensitiveHeaders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+      "Authorization",
+      "Cookie",
+      "Host",
+      "Content-Length",
+      "Transfer-Encoding",
+      "Connection",
+      "Upgrade"
+    };
+
+    return !sensitiveHeaders.Contains(headerName);
   }
 
   private string ResolveSchemaUrl(string refUrl)

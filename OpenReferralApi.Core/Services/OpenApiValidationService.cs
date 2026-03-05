@@ -2265,7 +2265,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     {
                         if (obj[propName] is JArray items)
                         {
-                            _logger.LogDebug("Processing collection property '{PropName}' with {Count} items", propName, items.Count);
+                            _logger.LogDebug("Processing collection property '{PropName}' with {Count} items", SanitizeForLogging(propName), items.Count);
                             foreach (var item in items)
                             {
                                 var id = ExtractIdFromObject(item, schemaIdFields);
@@ -2284,7 +2284,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     {
                         if (obj[propName] is JArray items)
                         {
-                            _logger.LogDebug("Processing fallback collection property '{PropName}' with {Count} items", propName, items.Count);
+                            _logger.LogDebug("Processing fallback collection property '{PropName}' with {Count} items", SanitizeForLogging(propName), items.Count);
                             foreach (var item in items)
                             {
                                 var id = ExtractIdFromObject(item, schemaIdFields);
@@ -2307,7 +2307,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to extract IDs from response for path {Path}", rootPath);
+            _logger.LogWarning(ex, "Failed to extract IDs from response for path {Path}", SanitizeForLogging(rootPath));
         }
 
         return ids.Distinct().ToList();
