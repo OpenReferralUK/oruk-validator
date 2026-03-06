@@ -7,7 +7,7 @@ namespace OpenReferralApi.Controllers;
 
 [ApiController]
 [Route("openreferraluk")]
-[Route("api/openapi")]
+[Route("api/openapi")] // Legacy route for backward compatibility, will be removed in future versions (once openreferraluk website is updated to point to new route)
 [Produces("application/json")]
 [EnableRateLimiting("fixed")]
 [ApiExplorerSettings(GroupName = "v1")]
@@ -15,12 +15,12 @@ public class OpenReferralUkController : BaseOpenApiController
 {
     private readonly IOpenApiValidationService _openApiValidationService;
     private readonly ILogger<OpenReferralUkController> _logger;
-    private readonly IOpenApiToValidationResponseMapper _mapper;
+    private readonly IOpenReferralUKValidationResponseMapper _mapper;
 
     public OpenReferralUkController(
         IOpenApiValidationService openApiValidationService,
         ILogger<OpenReferralUkController> logger,
-        IOpenApiToValidationResponseMapper mapper)
+        IOpenReferralUKValidationResponseMapper mapper)
     {
         _openApiValidationService = openApiValidationService;
         _logger = logger;
@@ -62,7 +62,7 @@ public class OpenReferralUkController : BaseOpenApiController
             "Validation completed (Open Referral UK format) for BaseUrl: {BaseUrl}",
             SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));
 
-        var mappedResult = _mapper.MapToValidationResponse(result);
+        var mappedResult = _mapper.MapToOpenReferralUKValidationResponse(result);
         return Ok(mappedResult);
     }
 }
