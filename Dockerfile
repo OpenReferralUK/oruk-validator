@@ -57,7 +57,7 @@ LABEL org.opencontainers.image.description="API for validating and monitoring Op
 LABEL org.opencontainers.image.version="${BUILD_VERSION}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
-LABEL org.opencontainers.image.vendor="TpX Impact"
+LABEL org.opencontainers.image.vendor="Open Referral UK"
 LABEL org.opencontainers.image.licenses="BSD-3-Clause"
 
 WORKDIR /app
