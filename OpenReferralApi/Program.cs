@@ -180,7 +180,7 @@ builder.Services.AddScoped<IOpenApiValidationService>(provider =>
 });
 
 builder.Services.AddScoped<IOpenApiDiscoveryService, OpenApiDiscoveryService>();
-builder.Services.AddScoped<IOpenApiToValidationResponseMapper, OpenApiToValidationResponseMapper>();
+builder.Services.AddScoped<IOpenReferralUKValidationResponseMapper, OpenReferralUKValidationResponseMapper>();
 
 // Configure Memory Cache with size limit from cache options
 var cacheMaxSizeMB = builder.Configuration.GetValue<int>("Cache:MaxSizeMB", 100);
