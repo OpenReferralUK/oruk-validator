@@ -37,6 +37,9 @@ public class MockController : ControllerBase
     [Route("fail")]
     [Route("warn")]
     [OutputCache(PolicyName = "MockEndpoints")]
+    [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetServiceMetadata()
     {
         return await ReadJsonFile(ResolveMockPath("api_details.json"));
@@ -50,6 +53,9 @@ public class MockController : ControllerBase
     [Route("fail/services")]
     [OutputCache(PolicyName = "MockEndpoints")]
     [Route("warn/services")]
+    [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetServices()
     {
         return await ReadJsonFile(ResolveMockPath("service_list.json"));
@@ -64,6 +70,9 @@ public class MockController : ControllerBase
     [Route("fail/services/{id}")]
     [Route("warn/services/{id}")]
     [OutputCache(PolicyName = "MockEndpoints")]
+    [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetServicesById()
     {
         return await ReadJsonFile(ResolveMockPath("service_full.json"));
@@ -77,6 +86,9 @@ public class MockController : ControllerBase
     [Route("fail/taxonomies")]
     [Route("warn/taxonomies")]
     [OutputCache(PolicyName = "MockEndpoints")]
+    [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetTaxonomies()
     {
         return await ReadJsonFile(ResolveMockPath("taxonomy_list.json"));
@@ -91,6 +103,9 @@ public class MockController : ControllerBase
     [Route("fail/taxonomies/{id}")]
     [Route("warn/taxonomies/{id}")]
     [OutputCache(PolicyName = "MockEndpoints")]
+    [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetTaxonomiesById()
     {
         return await ReadJsonFile(ResolveMockPath("taxonomy.json"));
@@ -104,6 +119,9 @@ public class MockController : ControllerBase
     [Route("fail/taxonomy_terms")]
     [Route("warn/taxonomy_terms")]
     [OutputCache(PolicyName = "MockEndpoints")]
+    [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetTaxonomyTerms()
     {
         return await ReadJsonFile(ResolveMockPath("taxonomy_term_list.json"));
@@ -118,6 +136,9 @@ public class MockController : ControllerBase
     [Route("fail/taxonomy_terms/{id}")]
     [Route("warn/taxonomy_terms/{id}")]
     [OutputCache(PolicyName = "MockEndpoints")]
+    [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetTaxonomyTermsById()
     {
         return await ReadJsonFile(ResolveMockPath("taxonomy_term.json"));
@@ -131,6 +152,9 @@ public class MockController : ControllerBase
     [Route("fail/service_at_locations")]
     [Route("warn/service_at_locations")]
     [OutputCache(PolicyName = "MockEndpoints")]
+    [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetServiceAtLocations()
     {
         return await ReadJsonFile(ResolveMockPath("service_at_location_list.json"));
@@ -145,6 +169,9 @@ public class MockController : ControllerBase
     [Route("fail/service_at_locations/{id}")]
     [Route("warn/service_at_locations/{id}")]
     [OutputCache(PolicyName = "MockEndpoints")]
+    [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetServiceAtLocationsById()
     {
         return await ReadJsonFile(ResolveMockPath("service_at_location_full.json"));
@@ -156,6 +183,9 @@ public class MockController : ControllerBase
     /// <param name="serviceUrl"></param>
     [HttpPost]
     [Route("v1/validate")]
+    [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetV1ValidatorMock([FromQuery]string? serviceUrl = null)
     {
         return await ReadJsonFile("Mocks/V1.0-UK-Default/V1_ValidateResponse.json");
@@ -167,6 +197,9 @@ public class MockController : ControllerBase
     [HttpGet]
     [Route("v1/dashboard")]
     [Route("dashboard")]
+    [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetDashboardMock()
     {
         return await ReadJsonFile("Mocks/V1.0-UK-Default/V1_DashboardResponse.json");

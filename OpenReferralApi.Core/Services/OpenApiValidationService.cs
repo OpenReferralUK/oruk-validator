@@ -2564,7 +2564,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// </summary>
     /// <param name="request">The HTTP request message to apply authentication to</param>
     /// <param name="authentication">The authentication configuration containing credentials and auth type</param>
-    private void ApplyAuthenticationHeaders(HttpRequestMessage request, DataSourceAuthentication authentication)
+    private void ApplyAuthenticationHeaders(HttpRequestMessage request, IAuthenticationConfig authentication)
     {
         // Apply API Key authentication
         if (!string.IsNullOrEmpty(authentication.ApiKey))

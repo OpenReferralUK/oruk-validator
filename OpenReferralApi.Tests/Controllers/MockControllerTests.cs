@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenReferralApi.Controllers;
@@ -96,5 +97,42 @@ public class MockControllerTests
 
         // Assert
         Assert.That(result, Is.TypeOf<OkObjectResult>());
+    }
+
+    [Test]
+    public void MockEndpoints_DeclareExpectedProducesResponseTypes()
+    {
+        var actionNames = new[]
+        {
+            nameof(MockController.GetServiceMetadata),
+            nameof(MockController.GetServices),
+            nameof(MockController.GetServicesById),
+            nameof(MockController.GetTaxonomies),
+            nameof(MockController.GetTaxonomiesById),
+            nameof(MockController.GetTaxonomyTerms),
+            nameof(MockController.GetTaxonomyTermsById),
+            nameof(MockController.GetServiceAtLocations),
+            nameof(MockController.GetServiceAtLocationsById),
+            nameof(MockController.GetV1ValidatorMock),
+            nameof(MockController.GetDashboardMock)
+        };
+
+        foreach (var actionName in actionNames)
+        {
+            var method = typeof(MockController).GetMethod(actionName);
+            Assert.That(method, Is.Not.Null, $"Expected action method '{actionName}' to exist");
+
+            var produces = method!
+                .GetCustomAttributes(typeof(ProducesResponseTypeAttribute), inherit: false)
+                .Cast<ProducesResponseTypeAttribute>()
+                .ToList();
+
+            Assert.That(produces.Any(p => p.StatusCode == StatusCodes.Status200OK), Is.True,
+                $"Expected '{actionName}' to declare 200 response type");
+            Assert.That(produces.Any(p => p.StatusCode == StatusCodes.Status404NotFound), Is.True,
+                $"Expected '{actionName}' to declare 404 response type");
+            Assert.That(produces.Any(p => p.StatusCode == StatusCodes.Status500InternalServerError), Is.True,
+                $"Expected '{actionName}' to declare 500 response type");
+        }
     }
 }

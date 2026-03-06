@@ -111,7 +111,7 @@ internal class OpenApiSpecFetcher
     /// <summary>
     /// Applies authentication credentials to an HTTP request.
     /// </summary>
-    private void ApplyAuthentication(HttpRequestMessage request, DataSourceAuthentication auth)
+    private void ApplyAuthentication(HttpRequestMessage request, IAuthenticationConfig auth)
     {
         // Apply API Key authentication
         if (!string.IsNullOrEmpty(auth.ApiKey))
