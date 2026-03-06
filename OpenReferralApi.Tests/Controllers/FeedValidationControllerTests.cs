@@ -50,20 +50,16 @@ public class FeedValidationControllerTests
     }
 
     [Test]
-    public async Task GetAllFeeds_WithException_ReturnsInternalServerError()
+    public void GetAllFeeds_WithException_ThrowsException()
     {
         // Arrange
         _feedValidationServiceMock
             .Setup(x => x.GetAllFeedsAsync(It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("Database error"));
 
-        // Act
-        var result = await _controller.GetAllFeeds(CancellationToken.None);
-
-        // Assert
-        Assert.That(result.Result, Is.TypeOf<ObjectResult>());
-        var objectResult = result.Result as ObjectResult;
-        Assert.That(objectResult?.StatusCode, Is.EqualTo(500));
+        // Act & Assert - Exception should propagate to GlobalExceptionHandler
+        Assert.ThrowsAsync<Exception>(async () => 
+            await _controller.GetAllFeeds(CancellationToken.None));
     }
 
     [Test]
@@ -128,20 +124,16 @@ public class FeedValidationControllerTests
     }
 
     [Test]
-    public async Task ValidateAllFeeds_WithException_ReturnsInternalServerError()
+    public void ValidateAllFeeds_WithException_ThrowsException()
     {
         // Arrange
         _feedValidationServiceMock
             .Setup(x => x.GetAllFeedsAsync(It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("Validation error"));
 
-        // Act
-        var result = await _controller.ValidateAllFeeds(CancellationToken.None);
-
-        // Assert
-        Assert.That(result.Result, Is.TypeOf<ObjectResult>());
-        var objectResult = result.Result as ObjectResult;
-        Assert.That(objectResult?.StatusCode, Is.EqualTo(500));
+        // Act & Assert - Exception should propagate to GlobalExceptionHandler
+        Assert.ThrowsAsync<Exception>(async () => 
+            await _controller.ValidateAllFeeds(CancellationToken.None));
     }
 
     [Test]
@@ -198,7 +190,7 @@ public class FeedValidationControllerTests
     }
 
     [Test]
-    public async Task ValidateFeed_WithException_ReturnsInternalServerError()
+    public void ValidateFeed_WithException_ThrowsException()
     {
         // Arrange
         var feedId = "1";
@@ -206,13 +198,9 @@ public class FeedValidationControllerTests
             .Setup(x => x.GetAllFeedsAsync(It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("Validation error"));
 
-        // Act
-        var result = await _controller.ValidateFeed(feedId, CancellationToken.None);
-
-        // Assert
-        Assert.That(result.Result, Is.TypeOf<ObjectResult>());
-        var objectResult = result.Result as ObjectResult;
-        Assert.That(objectResult?.StatusCode, Is.EqualTo(500));
+        // Act & Assert - Exception should propagate to GlobalExceptionHandler
+        Assert.ThrowsAsync<Exception>(async () => 
+            await _controller.ValidateFeed(feedId, CancellationToken.None));
     }
 }
 

@@ -15,6 +15,19 @@ public class MockController : ControllerBase
     {
         _logger = logger;
     }
+
+    /// <summary>
+    /// Resolves the appropriate mock file path based on the request path (fail/warn/default)
+    /// </summary>
+    private string ResolveMockPath(string fileName)
+    {
+        var requestPath = Request.Path.ToString();
+        if (requestPath.Contains("fail", StringComparison.CurrentCultureIgnoreCase))
+            return $"{MockPath}Fail/{fileName}";
+        if (requestPath.Contains("warn", StringComparison.CurrentCultureIgnoreCase))
+            return $"{MockPath}Warn/{fileName}";
+        return $"{MockPath}Default/{fileName}";
+    }
     
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 API details GET / endpoint  
@@ -26,12 +39,7 @@ public class MockController : ControllerBase
     [OutputCache(PolicyName = "MockEndpoints")]
     public async Task<IActionResult> GetServiceMetadata()
     {
-        var requestPath = Request.Path.ToString();
-        if (requestPath.Contains("fail", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Fail/api_details.json");
-        if (requestPath.Contains("warn", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Warn/api_details.json");
-        return await ReadJsonFile($"{MockPath}Default/api_details.json");
+        return await ReadJsonFile(ResolveMockPath("api_details.json"));
     }
     
     /// <summary>
@@ -44,12 +52,7 @@ public class MockController : ControllerBase
     [Route("warn/services")]
     public async Task<IActionResult> GetServices()
     {
-        var requestPath = Request.Path.ToString();
-        if (requestPath.Contains("fail", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Fail/service_list.json");
-        if (requestPath.Contains("warn", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Warn/service_list.json");
-        return await ReadJsonFile($"{MockPath}Default/service_list.json");
+        return await ReadJsonFile(ResolveMockPath("service_list.json"));
     }
     
     /// <summary>
@@ -63,12 +66,7 @@ public class MockController : ControllerBase
     [OutputCache(PolicyName = "MockEndpoints")]
     public async Task<IActionResult> GetServicesById()
     {
-        var requestPath = Request.Path.ToString();
-        if (requestPath.Contains("fail", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Fail/service_full.json");
-        if (requestPath.Contains("warn", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Warn/service_full.json");
-        return await ReadJsonFile($"{MockPath}Default/service_full.json");
+        return await ReadJsonFile(ResolveMockPath("service_full.json"));
     }
     
     /// <summary>
@@ -81,12 +79,7 @@ public class MockController : ControllerBase
     [OutputCache(PolicyName = "MockEndpoints")]
     public async Task<IActionResult> GetTaxonomies()
     {
-        var requestPath = Request.Path.ToString();
-        if (requestPath.Contains("fail", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Fail/taxonomy_list.json");
-        if (requestPath.Contains("warn", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Warn/taxonomy_list.json");
-        return await ReadJsonFile($"{MockPath}Default/taxonomy_list.json");
+        return await ReadJsonFile(ResolveMockPath("taxonomy_list.json"));
     }
     
     /// <summary>
@@ -100,12 +93,7 @@ public class MockController : ControllerBase
     [OutputCache(PolicyName = "MockEndpoints")]
     public async Task<IActionResult> GetTaxonomiesById()
     {
-        var requestPath = Request.Path.ToString();
-        if (requestPath.Contains("fail", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Fail/taxonomy.json");
-        if (requestPath.Contains("warn", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Warn/taxonomy.json");
-        return await ReadJsonFile($"{MockPath}Default/taxonomy.json");
+        return await ReadJsonFile(ResolveMockPath("taxonomy.json"));
     }
     
     /// <summary>
@@ -118,12 +106,7 @@ public class MockController : ControllerBase
     [OutputCache(PolicyName = "MockEndpoints")]
     public async Task<IActionResult> GetTaxonomyTerms()
     {
-        var requestPath = Request.Path.ToString();
-        if (requestPath.Contains("fail", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Fail/taxonomy_term_list.json");
-        if (requestPath.Contains("warn", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Warn/taxonomy_term_list.json");
-        return await ReadJsonFile($"{MockPath}Default/taxonomy_term_list.json");
+        return await ReadJsonFile(ResolveMockPath("taxonomy_term_list.json"));
     }
     
     /// <summary>
@@ -137,12 +120,7 @@ public class MockController : ControllerBase
     [OutputCache(PolicyName = "MockEndpoints")]
     public async Task<IActionResult> GetTaxonomyTermsById()
     {
-        var requestPath = Request.Path.ToString();
-        if (requestPath.Contains("fail", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Fail/taxonomy_term.json");
-        if (requestPath.Contains("warn", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Warn/taxonomy_term.json");
-        return await ReadJsonFile($"{MockPath}Default/taxonomy_term.json");
+        return await ReadJsonFile(ResolveMockPath("taxonomy_term.json"));
     }
     
     /// <summary>
@@ -155,12 +133,7 @@ public class MockController : ControllerBase
     [OutputCache(PolicyName = "MockEndpoints")]
     public async Task<IActionResult> GetServiceAtLocations()
     {
-        var requestPath = Request.Path.ToString();
-        if (requestPath.Contains("fail", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Fail/service_at_location_list.json");
-        if (requestPath.Contains("warn", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Warn/service_at_location_list.json");
-        return await ReadJsonFile($"{MockPath}Default/service_at_location_list.json");
+        return await ReadJsonFile(ResolveMockPath("service_at_location_list.json"));
     }
     
     /// <summary>
@@ -174,12 +147,7 @@ public class MockController : ControllerBase
     [OutputCache(PolicyName = "MockEndpoints")]
     public async Task<IActionResult> GetServiceAtLocationsById()
     {
-        var requestPath = Request.Path.ToString();
-        if (requestPath.Contains("fail", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Fail/service_at_location_full.json");
-        if (requestPath.Contains("warn", StringComparison.CurrentCultureIgnoreCase))
-            return await ReadJsonFile($"{MockPath}Warn/service_at_location_full.json");
-        return await ReadJsonFile($"{MockPath}Default/service_at_location_full.json");
+        return await ReadJsonFile(ResolveMockPath("service_at_location_full.json"));
     }
     
     /// <summary>
