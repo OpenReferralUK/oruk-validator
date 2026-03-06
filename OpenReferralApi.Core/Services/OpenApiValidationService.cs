@@ -26,6 +26,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     private readonly IJsonValidatorService _jsonValidatorService;
     private readonly ISchemaResolverService _schemaResolverService;
     private readonly IOpenApiDiscoveryService _discoveryService;
+    private readonly OpenApiSpecFetcher _specFetcher;
 
     public OpenApiValidationService(ILogger<OpenApiValidationService> logger, HttpClient httpClient, IJsonValidatorService jsonValidatorService, ISchemaResolverService schemaResolverService, IOpenApiDiscoveryService discoveryService)
     {
@@ -34,6 +35,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         _jsonValidatorService = jsonValidatorService;
         _schemaResolverService = schemaResolverService;
         _discoveryService = discoveryService;
+        _specFetcher = new OpenApiSpecFetcher(httpClient, logger, schemaResolverService);
     }
 
     public async Task<OpenApiValidationResult> ValidateOpenApiSpecificationAsync(OpenApiValidationRequest request, CancellationToken cancellationToken = default)
@@ -80,7 +82,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 // Fetch OpenAPI spec but defer resolution until we know we need it
                 // This avoids expensive resolution when we're only validating spec structure
                 // or when most endpoints won't be tested
-                openApiSpec = await FetchOpenApiSpecFromUrlAsync(request.OpenApiSchema.Url, request.OpenApiSchema.Authentication, cancellationToken, resolveReferences: false);
+                openApiSpec = await _specFetcher.FetchOpenApiSpecFromUrlAsync(request.OpenApiSchema.Url, request.OpenApiSchema.Authentication, cancellationToken, resolveReferences: false);
             }
             else
             {
@@ -1298,88 +1300,6 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         return validated;
-    }
-
-    private async Task<JObject> FetchOpenApiSpecFromUrlAsync(string specUrl, DataSourceAuthentication? auth, CancellationToken cancellationToken, bool resolveReferences = true)
-    {
-        try
-        {
-            var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
-            _logger.LogInformation("Fetching OpenAPI specification from URL: {SpecUrl}", safeSpecUrl);
-
-            if (!Uri.IsWellFormedUriString(specUrl, UriKind.Absolute))
-            {
-                throw new ArgumentException($"Invalid OpenAPI spec URL: {safeSpecUrl}");
-            }
-
-            using var request = new HttpRequestMessage(HttpMethod.Get, specUrl);
-
-            // Apply authentication only if it passes strict validation
-            var validatedAuth = ValidateAuthentication(auth);
-            if (validatedAuth != null)
-            {
-                ApplyAuthentication(request, validatedAuth);
-            }
-
-            var response = await _httpClient.SendAsync(request, cancellationToken);
-            response.EnsureSuccessStatusCode();
-
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            // Only resolve references if requested (lazy evaluation)
-            // This avoids expensive resolution when we're only validating spec structure
-            // or when endpoints won't be tested
-            if (resolveReferences)
-            {
-                var resolvedContent = await _schemaResolverService.ResolveAsync(content, specUrl, validatedAuth);
-                return JObject.Parse(resolvedContent);
-            }
-
-            // Return unresolved document for spec validation or later lazy resolution
-            return JObject.Parse(content);
-        }
-        catch (Exception ex)
-        {
-            var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
-            _logger.LogError(ex, "Failed to fetch OpenAPI specification from URL: {SpecUrl}", safeSpecUrl);
-            throw new InvalidOperationException($"Failed to fetch OpenAPI specification from URL: {safeSpecUrl}", ex);
-        }
-    }
-
-    private void ApplyAuthentication(HttpRequestMessage request, DataSourceAuthentication auth)
-    {
-        // Apply API Key authentication
-        if (!string.IsNullOrEmpty(auth.ApiKey))
-        {
-            request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
-            _logger.LogDebug("Applied API Key authentication with header: {Header}", SanitizeForLogging(auth.ApiKeyHeader));
-        }
-
-        // Apply Bearer Token authentication
-        if (!string.IsNullOrEmpty(auth.BearerToken))
-        {
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.BearerToken);
-            _logger.LogDebug("Applied Bearer Token authentication");
-        }
-
-        // Apply Basic authentication
-        if (auth.BasicAuth != null && !string.IsNullOrEmpty(auth.BasicAuth.Username))
-        {
-            var credentials = Convert.ToBase64String(
-                Encoding.ASCII.GetBytes($"{auth.BasicAuth.Username}:{auth.BasicAuth.Password}"));
-            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-            _logger.LogDebug("Applied Basic authentication for user: {Username}", SanitizeForLogging(auth.BasicAuth.Username));
-        }
-
-        // Apply custom headers
-        if (auth.CustomHeaders != null)
-        {
-            foreach (var header in auth.CustomHeaders)
-            {
-                request.Headers.Add(header.Key, header.Value);
-                _logger.LogDebug("Applied custom header: {HeaderName}", SanitizeForLogging(header.Key));
-            }
-        }
     }
 
     private OpenApiValidationSummary BuildTestSummary(OpenApiSpecificationValidation? specValidation, List<EndpointTestResult> endpointTests, OpenApiValidationOptions options)
