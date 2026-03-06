@@ -114,7 +114,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // Build summary
-            result.Summary = BuildTestSummary(specValidation, endpointTests);
+            result.Summary = BuildTestSummary(specValidation, endpointTests, request.Options);
             result.IsValid = (specValidation?.IsValid ?? true) && result.Summary.FailedTests == 0;
 
             // Set metadata
@@ -1382,14 +1382,19 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
     }
 
-    private OpenApiValidationSummary BuildTestSummary(OpenApiSpecificationValidation? specValidation, List<EndpointTestResult> endpointTests)
+    private OpenApiValidationSummary BuildTestSummary(OpenApiSpecificationValidation? specValidation, List<EndpointTestResult> endpointTests, OpenApiValidationOptions options)
     {
+        var shouldIgnoreOptionalFailures = options.TestOptionalEndpoints && options.TreatOptionalEndpointsAsWarnings;
+        var failedTests = endpointTests.Count(e =>
+            (e.Status == EndpointTestStatus.FailedValidation || e.Status == EndpointTestStatus.Error) &&
+            !(shouldIgnoreOptionalFailures && e.IsOptional));
+
         var summary = new OpenApiValidationSummary
         {
             TotalEndpoints = endpointTests.Count,
             TestedEndpoints = endpointTests.Count(e => e.IsTested),
             SuccessfulTests = endpointTests.Count(e => e.Status == EndpointTestStatus.PassedValidation),
-            FailedTests = endpointTests.Count(e => e.Status == EndpointTestStatus.FailedValidation || e.Status == EndpointTestStatus.Error),
+            FailedTests = failedTests,
             SkippedTests = endpointTests.Count(e => e.Status == EndpointTestStatus.NotTested || e.Status == EndpointTestStatus.Skipped),
             TotalRequests = endpointTests.Sum(e => e.TestResults.Count),
             SpecificationValid = specValidation?.IsValid ?? true
