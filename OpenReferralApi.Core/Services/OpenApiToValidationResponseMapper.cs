@@ -61,9 +61,7 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
     {
         var tests = endpointTests.Select(endpoint => 
         {
-            // Find the first failed test if any
-            var firstFailedTest = endpoint.TestResults.FirstOrDefault(tr => tr.ValidationResult != null && !tr.ValidationResult.IsValid);
-            var testToUse = firstFailedTest ?? endpoint.TestResults.FirstOrDefault();
+            var testToUse = endpoint.PrimaryTestResult;
             
             return new
             {
@@ -71,8 +69,8 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
                 endpoint = $"{baseUrl}{endpoint.Path}",
                 description = endpoint.Summary ?? endpoint.OperationId ?? "Endpoint test",
                 id = testToUse?.TestedId,
-                success = firstFailedTest == null && endpoint.TestResults.Any(tr => tr.ValidationResult != null && tr.ValidationResult.IsValid),
-                messages = MapEndpointMessages(endpoint, firstFailedTest)
+                success = endpoint.PrimaryTestResult?.ValidationResult?.IsValid ?? endpoint.TestResults.Any(tr => tr.ValidationResult != null && tr.ValidationResult.IsValid),
+                messages = MapEndpointMessages(endpoint, testToUse)
             };
         }).ToList();
 
@@ -93,13 +91,35 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
 
         // Add schema validation issues from test results
         // If a specific test is provided (first failed), use only that one
-        var testsToProcess = specificTest != null 
-            ? new[] { specificTest } 
+        var endpointErrors = endpoint.ValidationErrors;
+
+        var testsToProcess = specificTest != null
+            ? new[] { specificTest }
             : endpoint.TestResults.Where(tr => tr.ValidationResult != null && !tr.ValidationResult.IsValid);
             
         // Track seen error paths to deduplicate errors across multiple test results
         var seenErrorPaths = new HashSet<string>(StringComparer.Ordinal);
         
+        if (specificTest == null && endpointErrors.Any())
+        {
+            foreach (var validationError in endpointErrors)
+            {
+                if (seenErrorPaths.Add(validationError.Path))
+                {
+                    messages.Add(new
+                    {
+                        name = validationError.ErrorCode,
+                        description = validationError.Severity,
+                        message = validationError.Message,
+                        errorIn = validationError.Path,
+                        errorAt = ""
+                    });
+                }
+            }
+
+            return messages;
+        }
+
         foreach (var testResult in testsToProcess)
         {
             if (testResult.ValidationResult != null && !testResult.ValidationResult.IsValid)

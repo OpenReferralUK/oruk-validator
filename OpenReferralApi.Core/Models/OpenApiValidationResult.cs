@@ -54,5 +54,5 @@ public class OpenApiValidationResult
     /// Helpful for audit trails, debugging, and result correlation
     /// </summary>
     [JsonProperty("metadata")]
-    public OpenApiValidationMetadata? Metadata { get; set; }
+    public CommonValidationMetadata? Metadata { get; set; }
 }

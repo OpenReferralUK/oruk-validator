@@ -28,23 +28,7 @@ public class ServiceFeed
     /// </summary>
     [BsonIgnore]
     [JsonPropertyName("url")]
-    public string Url
-    {
-        get
-        {
-            // Try to get URL from service.url first
-            if (Service != null && Service.Contains("url"))
-            {
-                var urlValue = Service["url"];
-                if (urlValue != null && urlValue.IsString)
-                {
-                    return urlValue.AsString;
-                }
-            }
-            // Fallback to the url field
-            return UrlField ?? string.Empty;
-        }
-    }
+    public string Url => ServiceFeedMapper.GetUrl(this);
 
     [BsonElement("name")]
     [BsonIgnoreIfNull]
@@ -56,7 +40,7 @@ public class ServiceFeed
     /// </summary>
     [BsonIgnore]
     [JsonPropertyName("name")]
-    public string? NameAsString => Name?.ToString();
+    public string? NameAsString => ServiceFeedMapper.GetNameAsString(this);
 
     [BsonElement("active")]
     [BsonIgnoreIfNull]
@@ -68,16 +52,7 @@ public class ServiceFeed
     /// </summary>
     [BsonIgnore]
     [JsonPropertyName("active")]
-    public bool IsActive
-    {
-        get
-        {
-            if (ActiveField == null) return false;
-            if (ActiveField.IsBoolean) return ActiveField.AsBoolean;
-            if (ActiveField.IsString) return ActiveField.AsString.ToLowerInvariant() == "true";
-            return false;
-        }
-    }
+    public bool IsActive => ServiceFeedMapper.GetBoolean(ActiveField);
 
     [BsonElement("statusIsUp")]
     [BsonIgnoreIfNull]
@@ -89,27 +64,7 @@ public class ServiceFeed
     /// </summary>
     [BsonIgnore]
     [JsonPropertyName("statusIsUp")]
-    public bool IsUp
-    {
-        get
-        {
-            if (StatusIsUp == null) return false;
-            if (StatusIsUp.IsBoolean) return StatusIsUp.AsBoolean;
-            if (StatusIsUp.IsString) return StatusIsUp.AsString.ToLowerInvariant() == "true";
-            // Handle nested object with value field
-            if (StatusIsUp.IsBsonDocument)
-            {
-                var doc = StatusIsUp.AsBsonDocument;
-                if (doc.Contains("value"))
-                {
-                    var val = doc["value"];
-                    if (val.IsBoolean) return val.AsBoolean;
-                    if (val.IsString) return val.AsString.ToLowerInvariant() == "true";
-                }
-            }
-            return false;
-        }
-    }
+    public bool IsUp => ServiceFeedMapper.GetBoolean(StatusIsUp);
 
     [BsonElement("statusIsValid")]
     [BsonIgnoreIfNull]
@@ -121,27 +76,7 @@ public class ServiceFeed
     /// </summary>
     [BsonIgnore]
     [JsonPropertyName("statusIsValid")]
-    public bool IsValid
-    {
-        get
-        {
-            if (StatusIsValid == null) return false;
-            if (StatusIsValid.IsBoolean) return StatusIsValid.AsBoolean;
-            if (StatusIsValid.IsString) return StatusIsValid.AsString.ToLowerInvariant() == "true";
-            // Handle nested object with value field
-            if (StatusIsValid.IsBsonDocument)
-            {
-                var doc = StatusIsValid.AsBsonDocument;
-                if (doc.Contains("value"))
-                {
-                    var val = doc["value"];
-                    if (val.IsBoolean) return val.AsBoolean;
-                    if (val.IsString) return val.AsString.ToLowerInvariant() == "true";
-                }
-            }
-            return false;
-        }
-    }
+    public bool IsValid => ServiceFeedMapper.GetBoolean(StatusIsValid);
 
     [BsonElement("statusOverall")]
     [BsonIgnoreIfNull]
@@ -153,27 +88,7 @@ public class ServiceFeed
     /// </summary>
     [BsonIgnore]
     [JsonPropertyName("statusOverall")]
-    public bool IsOverallValid
-    {
-        get
-        {
-            if (StatusOverall == null) return false;
-            if (StatusOverall.IsBoolean) return StatusOverall.AsBoolean;
-            if (StatusOverall.IsString) return StatusOverall.AsString.ToLowerInvariant() == "true";
-            // Handle nested object with value field
-            if (StatusOverall.IsBsonDocument)
-            {
-                var doc = StatusOverall.AsBsonDocument;
-                if (doc.Contains("value"))
-                {
-                    var val = doc["value"];
-                    if (val.IsBoolean) return val.AsBoolean;
-                    if (val.IsString) return val.AsString.ToLowerInvariant() == "true";
-                }
-            }
-            return false;
-        }
-    }
+    public bool IsOverallValid => ServiceFeedMapper.GetBoolean(StatusOverall);
 
     [BsonElement("lastChecked")]
     public DateTime? LastChecked { get; set; }
@@ -197,44 +112,11 @@ public class ServiceFeed
     /// </summary>
     [BsonIgnore]
     [JsonPropertyName("lastTested")]
-    public DateTime? LastTestedTime
-    {
-        get
-        {
-            if (LastTested == null) return null;
-            if (LastTested.IsValidDateTime) return LastTested.ToUniversalTime();
-            // Handle nested object with value field
-            if (LastTested.IsBsonDocument)
-            {
-                var doc = LastTested.AsBsonDocument;
-                if (doc.Contains("value") && doc["value"].IsValidDateTime)
-                {
-                    return doc["value"].ToUniversalTime();
-                }
-            }
-            return null;
-        }
-    }
+    public DateTime? LastTestedTime => ServiceFeedMapper.GetLastTestedTime(LastTested);
 
     /// <summary>
     /// Helper property to get lastTested url as string
     /// </summary>
     [BsonIgnore]
-    public string? TestResultsUrl
-    {
-        get
-        {
-            if (LastTested == null) return null;
-            // Handle nested object with url field
-            if (LastTested.IsBsonDocument)
-            {
-                var doc = LastTested.AsBsonDocument;
-                if (doc.Contains("url") && doc["url"].IsString)
-                {
-                    return doc["url"].AsString;
-                }
-            }
-            return null;
-        }
-    }
+    public string? TestResultsUrl => ServiceFeedMapper.GetTestResultsUrl(LastTested);
 }

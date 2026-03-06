@@ -120,7 +120,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             result.IsValid = (specValidation?.IsValid ?? true) && result.Summary.FailedTests == 0;
 
             // Set metadata
-            result.Metadata = new OpenApiValidationMetadata
+            result.Metadata = new CommonValidationMetadata
             {
                 BaseUrl = request.BaseUrl,
                 TestTimestamp = DateTime.UtcNow,
@@ -150,6 +150,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             {
                 foreach (var ep in result.EndpointTests)
                 {
+                    ep.RefreshFlattenedFields();
                     ep.TestResults.Clear();
                 }
             }
