@@ -39,10 +39,9 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
             }
         }
 
-        // Determine overall validity
-        bool isValid = openApiResult?.IsValid ?? false && 
-                       openApiResult?.Summary?.FailedTests == 0 && 
-                       (openApiResult?.SpecificationValidation?.IsValid ?? true);
+        // Determine overall validity based solely on endpoint test status
+        // Feed is invalid only if any endpoint has FailedValidation status
+        bool isValid = !(openApiResult?.EndpointTests?.Any(e => e.Status == EndpointTestStatus.FailedValidation) ?? false);
 
         return new OpenReferralUKValidationResponse
         {
