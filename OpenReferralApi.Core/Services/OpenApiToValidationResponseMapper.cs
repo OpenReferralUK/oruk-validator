@@ -40,9 +40,9 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
         }
 
         // Determine overall validity
+        // Note: SpecificationValidation is informational only and does not affect feed validity
         bool isValid = openApiResult?.IsValid ?? false && 
-                       openApiResult?.Summary?.FailedTests == 0 && 
-                       (openApiResult?.SpecificationValidation?.IsValid ?? true);
+                       openApiResult?.Summary?.FailedTests == 0;
 
         return new OpenReferralUKValidationResponse
         {

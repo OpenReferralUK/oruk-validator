@@ -939,6 +939,75 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithOptionalEndpointSchemaFailureAndWarningMode_DoesNotFailValidation()
+    {
+        // Arrange
+        var json = CreateOpenApi30OptionalEndpointSpec();
+        _jsonValidatorServiceMock
+            .Setup(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = false,
+                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                {
+                    new()
+                    {
+                        Path = "data",
+                        Message = "Validation failed for optional endpoint payload",
+                        ErrorCode = "SCHEMA_MISMATCH",
+                        Severity = "Error"
+                    }
+                },
+                SchemaVersion = "test",
+                Duration = TimeSpan.Zero
+            });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = true,
+                TestOptionalEndpoints = true,
+                TreatOptionalEndpointsAsWarnings = true
+            }
+        };
+
+        SetupHttpMock((req, ct) =>
+        {
+            var requestUri = req.RequestUri?.ToString() ?? string.Empty;
+            if (requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(json)
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("{}")
+            };
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+        Assert.That(result.EndpointTests[0].IsOptional, Is.True);
+        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
+        Assert.That(result.Summary, Is.Not.Null);
+        Assert.That(result.Summary!.FailedTests, Is.EqualTo(0));
+        Assert.That(result.IsValid, Is.True);
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_WithOptionalEndpointAndTestingDisabled_SkipsEndpoint()
     {
         // Arrange
