@@ -17,7 +17,7 @@ internal class RemoteSchemaLoader
     private readonly ILogger _logger;
     private readonly IMemoryCache _memoryCache;
     private readonly CacheOptions _cacheOptions;
-    private DataSourceAuthentication? _auth;
+    private IAuthenticationConfig? _auth;
 
     public RemoteSchemaLoader(
         HttpClient httpClient,
@@ -34,7 +34,7 @@ internal class RemoteSchemaLoader
     /// <summary>
     /// Sets the authentication configuration for this loader instance.
     /// </summary>
-    public void SetAuthentication(DataSourceAuthentication? auth)
+    public void SetAuthentication(IAuthenticationConfig? auth)
     {
         _auth = auth;
     }
@@ -120,7 +120,7 @@ internal class RemoteSchemaLoader
     /// <summary>
     /// Applies authentication credentials to an HTTP request.
     /// </summary>
-    private void ApplyAuthentication(HttpRequestMessage request, DataSourceAuthentication auth)
+    private void ApplyAuthentication(HttpRequestMessage request, IAuthenticationConfig auth)
     {
         // Validate authentication data early to prevent propagation of tainted values
         if (auth == null)
@@ -175,7 +175,7 @@ internal class RemoteSchemaLoader
     /// <summary>
     /// Validates that authentication configuration is present and properly formed.
     /// </summary>
-    private static bool IsValidAuthentication(DataSourceAuthentication? auth)
+    private static bool IsValidAuthentication(IAuthenticationConfig? auth)
     {
         if (auth == null)
         {

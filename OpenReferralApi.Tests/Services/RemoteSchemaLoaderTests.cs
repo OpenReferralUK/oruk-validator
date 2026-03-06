@@ -174,6 +174,58 @@ public class RemoteSchemaLoaderTests
     }
 
     [Test]
+    public async Task LoadRemoteSchemaAsync_WithInterfaceBasedAuthentication_AppliesHeaders()
+    {
+        // Arrange
+        var schemaUrl = "https://example.com/schema.json";
+        var schemaJson = @"{""type"": ""object""}";
+        HttpRequestMessage? capturedRequest = null;
+
+        var handler = new MockHttpMessageHandler(async request =>
+        {
+            capturedRequest = request;
+            return new HttpResponseMessage
+            {
+                StatusCode = System.Net.HttpStatusCode.OK,
+                Content = new StringContent(schemaJson)
+            };
+        });
+
+        using var httpClient = new HttpClient(handler);
+        var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+
+        IAuthenticationConfig auth = new TestAuthenticationConfig
+        {
+            ApiKey = "test-key",
+            ApiKeyHeader = "X-Test-Key",
+            CustomHeaders = new Dictionary<string, string>
+            {
+                { "X-From-Interface", "yes" }
+            }
+        };
+
+        loader.SetAuthentication(auth);
+
+        // Act
+        var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
+
+        // Assert
+        Assert.That(result, Is.Not.Null);
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.Headers.Contains("X-Test-Key"), Is.True);
+        Assert.That(capturedRequest.Headers.Contains("X-From-Interface"), Is.True);
+    }
+
+    private sealed class TestAuthenticationConfig : IAuthenticationConfig
+    {
+        public string? ApiKey { get; set; }
+        public string ApiKeyHeader { get; set; } = "X-API-Key";
+        public string? BearerToken { get; set; }
+        public BasicAuthentication? BasicAuth { get; set; }
+        public Dictionary<string, string>? CustomHeaders { get; set; } = new();
+    }
+
+    [Test]
     public async Task LoadRemoteSchemaAsync_WithInvalidApiKeyHeader_SkipsApiKeyAuth()
     {
         // Arrange
