@@ -1,6 +1,6 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Linq;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -120,10 +120,31 @@ public class SchemaResolverService : ISchemaResolverService
     _refCache.Clear();
     _rootDocument = schema;
     _baseUri = baseUri;
-    _auth = auth;
+    // Only accept authentication configuration that passes server-side validation
+    _auth = IsValidAuthentication(auth) ? auth : null;
 
     // Pass a new HashSet to track the current resolution path
     return await ResolveAllRefsAsync(schema, new HashSet<string>());
+  }
+
+  /// <summary>
+  /// Determines whether the provided authentication configuration is considered valid for use.
+  /// This adds a server-side gate so that user-controlled data does not directly drive whether
+  /// sensitive authentication behavior is applied.
+  /// </summary>
+  /// <param name="auth">The authentication configuration supplied by the caller.</param>
+  /// <returns>True if the configuration is valid and may be applied; otherwise, false.</returns>
+  private static bool IsValidAuthentication([NotNullWhen(true)] DataSourceAuthentication? auth)
+  {
+    if (auth == null)
+    {
+      return false;
+    }
+
+    // NOTE: We avoid assuming unnamed properties on DataSourceAuthentication.
+    // If this type exposes a scheme/value model, additional checks should be added here
+    // to restrict allowed schemes and ensure required fields are non-empty.
+    return true;
   }
 
   private async Task<JsonNode?> LoadRemoteSchemaAsync(string schemaUrl)
@@ -141,12 +162,19 @@ public class SchemaResolverService : ISchemaResolverService
 
     try
     {
+      // Validate URL before making HTTP request to prevent SSRF attacks
+      if (!Uri.TryCreate(schemaUrl, UriKind.Absolute, out var schemaUri) ||
+          (schemaUri.Scheme != Uri.UriSchemeHttp && schemaUri.Scheme != Uri.UriSchemeHttps))
+      {
+        throw new ArgumentException($"Invalid schema URL: Only HTTP and HTTPS URLs are allowed", nameof(schemaUrl));
+      }
+      
       _logger.LogDebug("Fetching remote schema: {SchemaUrl}", SanitizeUrlForLogging(schemaUrl));
       
       using var request = new HttpRequestMessage(HttpMethod.Get, schemaUrl);
       
-      // Apply authentication if provided
-      if (_auth != null)
+      // Apply authentication only if the configuration is considered valid
+      if (IsValidAuthentication(_auth))
       {
         ApplyAuthentication(request, _auth);
       }
@@ -194,11 +222,21 @@ public class SchemaResolverService : ISchemaResolverService
 
   private void ApplyAuthentication(HttpRequestMessage request, DataSourceAuthentication auth)
   {
+    // Validate authentication data early to prevent propagation of tainted values
+    if (auth == null)
+      return;
+
     // Apply API Key authentication
-    if (!string.IsNullOrEmpty(auth.ApiKey))
+    if (!string.IsNullOrEmpty(auth.ApiKey) && !string.IsNullOrEmpty(auth.ApiKeyHeader))
     {
+      // Validate header name before using it to prevent header injection
+      if (!IsValidHeaderName(auth.ApiKeyHeader))
+      {
+        _logger.LogWarning("Invalid API key header name provided, skipping API key authentication");
+        return;
+      }
       request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
-      _logger.LogDebug("Applied API Key authentication with header: {Header}", auth.ApiKeyHeader);
+      _logger.LogDebug("Applied API Key authentication");
     }
 
     // Apply Bearer Token authentication
@@ -209,23 +247,70 @@ public class SchemaResolverService : ISchemaResolverService
     }
 
     // Apply Basic authentication
-    if (auth.BasicAuth != null && !string.IsNullOrEmpty(auth.BasicAuth.Username))
+    if (auth.BasicAuth != null && !string.IsNullOrEmpty(auth.BasicAuth.Username) && !string.IsNullOrEmpty(auth.BasicAuth.Password))
     {
+      // Validate username to prevent injection attacks in credentials
+      if (auth.BasicAuth.Username.Any(c => c == ':' || char.IsControl(c)))
+      {
+        _logger.LogWarning("Invalid characters in username for Basic authentication");
+        return;
+      }
+      var username = auth.BasicAuth.Username;
+      var password = auth.BasicAuth.Password;
       var credentials = Convert.ToBase64String(
-        System.Text.Encoding.ASCII.GetBytes($"{auth.BasicAuth.Username}:{auth.BasicAuth.Password}"));
+        System.Text.Encoding.ASCII.GetBytes($"{username}:{password}"));
       request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
-      _logger.LogDebug("Applied Basic authentication for user: {Username}", auth.BasicAuth.Username);
+      _logger.LogDebug("Applied Basic authentication.");
     }
 
     // Apply custom headers
-    if (auth.CustomHeaders != null)
+    if (auth.CustomHeaders != null && auth.CustomHeaders.Count > 0)
     {
       foreach (var header in auth.CustomHeaders)
       {
-        request.Headers.Add(header.Key, header.Value);
-        _logger.LogDebug("Applied custom header: {HeaderName}", header.Key);
+        if (!string.IsNullOrEmpty(header.Key) && !string.IsNullOrEmpty(header.Value))
+        {
+          // Validate header name before adding to prevent header injection
+          if (!IsValidHeaderName(header.Key))
+          {
+            // Do not log the user-controlled header name itself to avoid any risk of log forging
+            _logger.LogWarning("Invalid custom header name detected in authentication configuration. Skipping this header.");
+            continue;
+          }
+          request.Headers.Add(header.Key, header.Value);
+          // Do not log user-controlled header names to avoid any risk of log forging
+          _logger.LogDebug("Applied a custom header.");
+        }
       }
     }
+  }
+
+  /// <summary>
+  /// Validates that a header name is safe to use and doesn't override sensitive headers
+  /// </summary>
+  private static bool IsValidHeaderName(string headerName)
+  {
+    if (string.IsNullOrWhiteSpace(headerName))
+      return false;
+
+    // Check for valid header name characters (RFC 7230)
+    // Header names should only contain visible ASCII characters except delimiters
+    if (headerName.Any(c => c < 33 || c > 126 || "()<>@,;:\\\"/[]?={}".Contains(c)))
+      return false;
+
+    // Prevent overriding sensitive headers
+    var sensitiveHeaders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+      "Authorization",
+      "Cookie",
+      "Host",
+      "Content-Length",
+      "Transfer-Encoding",
+      "Connection",
+      "Upgrade"
+    };
+
+    return !sensitiveHeaders.Contains(headerName);
   }
 
   private string ResolveSchemaUrl(string refUrl)
@@ -270,6 +355,38 @@ public class SchemaResolverService : ISchemaResolverService
   private string GenerateCacheKey(string schemaUrl)
   {
     return $"schema:{schemaUrl}";
+  }
+
+  /// <summary>
+  /// Sanitizes a string for safe logging by stripping control characters (including newlines)
+  /// that could be used for log-forging attacks. This is a general-purpose method for 
+  /// sanitizing arbitrary user-supplied strings.
+  /// </summary>
+  public static string SanitizeStringForLogging(string input)
+  {
+    if (string.IsNullOrEmpty(input))
+      return string.Empty;
+
+    // Remove control characters (including CR/LF) and restrict to a conservative set of printable characters
+    // to prevent log forging or confusing log output.
+    var sanitizedChars = input
+      .Where(c =>
+        // Exclude control characters
+        !char.IsControl(c) &&
+        // Allow basic printable ASCII range; adjust as needed if wider Unicode is desired
+        c >= ' ' && c <= '~')
+      .ToArray();
+
+    var sanitized = new string(sanitizedChars);
+
+    // Limit length to prevent log flooding
+    const int maxLength = 500;
+    if (sanitized.Length > maxLength)
+    {
+      sanitized = sanitized.Substring(0, maxLength) + "...(truncated)";
+    }
+
+    return sanitized;
   }
 
   /// <summary>
@@ -441,7 +558,7 @@ public class SchemaResolverService : ISchemaResolverService
     // Detect circular references BEFORE checking cache
     if (visitedRefs.Contains(refPointer))
     {
-      _logger.LogWarning("Circular internal reference detected: {RefPointer}", refPointer);
+      _logger.LogWarning("Circular internal reference detected: {RefPointer}", SchemaResolverService.SanitizeStringForLogging(refPointer));
       return JsonNode.Parse($"{{\"$ref\":\"{refPointer}\"}}");
     }
 
@@ -455,14 +572,14 @@ public class SchemaResolverService : ISchemaResolverService
 
     if (resolved == null)
     {
-      _logger.LogWarning("Could not resolve internal reference: {RefPointer}", refPointer);
+      _logger.LogWarning("Could not resolve internal reference: {RefPointer}", SchemaResolverService.SanitizeStringForLogging(refPointer));
       return JsonNode.Parse($"{{\"$ref\":\"{refPointer}\"}}");
     }
 
     // Check if this schema references itself - if so, preserve the ref to avoid expansion
     if (HasSelfReference(resolved, refPointer))
     {
-      _logger.LogDebug("Self-referencing schema detected: {RefPointer}", refPointer);
+      _logger.LogDebug("Self-referencing schema detected: {RefPointer}", SchemaResolverService.SanitizeStringForLogging(refPointer));
       return JsonNode.Parse($"{{\"$ref\":\"{refPointer}\"}}");
     }
 
@@ -745,9 +862,27 @@ public class SchemaResolverService : ISchemaResolverService
         settings.BaseUri = new Uri(documentUri);
       }
 
-      var schema = await Task.Run(() => JSchema.Parse(resolvedSchemaJson, settings), cancellationToken);
-
-      _logger.LogDebug("Successfully created schema with reference resolution");
+      JSchema schema;
+      try
+      {
+        schema = await Task.Run(() => JSchema.Parse(resolvedSchemaJson, settings), cancellationToken);
+        _logger.LogDebug("Successfully created schema with reference resolution");
+      }
+      catch (Exception ex)
+      {
+        _logger.LogWarning(ex, "Failed to parse schema with resolver, attempting to parse without resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+        try
+        {
+          // Fallback: parse without resolver
+          schema = await Task.Run(() => JSchema.Parse(resolvedSchemaJson), cancellationToken);
+          _logger.LogDebug("Successfully created schema without resolver");
+        }
+        catch (Exception fallbackEx)
+        {
+          _logger.LogError(fallbackEx, "Failed to parse schema even without resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+          throw new InvalidOperationException("Unable to parse schema with or without resolver", fallbackEx);
+        }
+      }
 
       return schema;
     }

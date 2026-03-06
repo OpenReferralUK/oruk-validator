@@ -1,9 +1,9 @@
-using System;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Models;
+using System.Text.RegularExpressions;
 using ValidationError = OpenReferralApi.Core.Models.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
@@ -135,7 +135,7 @@ public class JsonValidatorService : IJsonValidatorService
             result.Errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Validation failed: {ex.Message}",
+                Message = $"Validation failed: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "VALIDATION_ERROR",
                 Severity = "Error"
             });
@@ -194,7 +194,7 @@ public class JsonValidatorService : IJsonValidatorService
             result.Errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Schema validation failed: {ex.Message}",
+                Message = $"Schema validation failed: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "SCHEMA_VALIDATION_ERROR",
                 Severity = "Error"
             });
@@ -316,7 +316,7 @@ public class JsonValidatorService : IJsonValidatorService
             errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Invalid JSON format: {ex.Message}",
+                Message = $"Invalid JSON format: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "INVALID_JSON",
                 Severity = "Error"
             });
@@ -443,6 +443,7 @@ public class JsonValidatorService : IJsonValidatorService
     /// <summary>
     /// Detects fields in the JSON data that are not defined in the schema.
     /// Returns a list of validation warnings for each additional field found.
+    /// Normalizes array index segments (for example "items[0]" -> "items") and returns only unique results.
     /// </summary>
     private List<ValidationError> DetectAdditionalFields(string jsonData, JSchema schema)
     {
@@ -452,6 +453,22 @@ public class JsonValidatorService : IJsonValidatorService
         {
             var jsonToken = JToken.Parse(jsonData);
             DetectAdditionalFieldsRecursive(jsonToken, schema, "", warnings);
+            
+            // Normalize paths and keep only unique warnings by normalized path
+            var uniqueWarnings = new Dictionary<string, ValidationError>();
+            
+            foreach (var warning in warnings)
+            {
+                var normalizedPath = NormalizeAdditionalFieldPath(warning.Path);
+                if (!uniqueWarnings.ContainsKey(normalizedPath))
+                {
+                    warning.Path = normalizedPath;
+                    warning.Message = BuildAdditionalFieldMessage(normalizedPath);
+                    uniqueWarnings[normalizedPath] = warning;
+                }
+            }
+            
+            return uniqueWarnings.Values.ToList();
         }
         catch (Exception ex)
         {
@@ -485,7 +502,7 @@ public class JsonValidatorService : IJsonValidatorService
                     warnings.Add(new ValidationError
                     {
                         Path = propertyPath,
-                        Message = $"Field '{property.Name}' is not defined in the schema",
+                        Message = BuildAdditionalFieldMessage(propertyPath),
                         ErrorCode = "ADDITIONAL_FIELD",
                         Severity = "Info"
                     });
@@ -516,6 +533,40 @@ public class JsonValidatorService : IJsonValidatorService
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Removes array index segments from a path (for example "service_at_locations[0]" -> "service_at_locations").
+    /// </summary>
+    private string NormalizeAdditionalFieldPath(string path)
+    {
+        return Regex.Replace(path, @"\[[^\]]*\]", "");
+    }
+
+    private static string BuildAdditionalFieldMessage(string path)
+    {
+        return $"Field '{path}' is not defined in the schema";
+    }
+
+    /// <summary>
+    /// Sanitizes exception messages to prevent log injection attacks by removing control characters.
+    /// </summary>
+    private static string SanitizeExceptionMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+            return string.Empty;
+
+        // Remove control characters (including CR/LF) to prevent log forging
+        var sanitized = new string(message.Where(c => !char.IsControl(c)).ToArray());
+
+        // Limit length to prevent log flooding
+        const int maxLength = 500;
+        if (sanitized.Length > maxLength)
+        {
+            sanitized = sanitized.Substring(0, maxLength) + "...(truncated)";
+        }
+
+        return sanitized;
     }
 
 }
