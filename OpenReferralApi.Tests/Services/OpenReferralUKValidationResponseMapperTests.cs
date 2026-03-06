@@ -22,7 +22,7 @@ public class OpenReferralUKValidationResponseMapperTests
         var result = new OpenApiValidationResult
         {
             IsValid = true,
-            Metadata = new OpenApiValidationMetadata
+            Metadata = new CommonValidationMetadata
             {
                 BaseUrl = "https://api.example.com"
             },
@@ -58,7 +58,7 @@ public class OpenReferralUKValidationResponseMapperTests
         var result = new OpenApiValidationResult
         {
             IsValid = true,
-            Metadata = new OpenApiValidationMetadata
+            Metadata = new CommonValidationMetadata
             {
                 BaseUrl = "https://api.example.com"
             },

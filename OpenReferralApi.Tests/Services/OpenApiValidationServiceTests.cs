@@ -599,6 +599,50 @@ public class OpenApiValidationServiceTests
         Assert.That(result, Is.Not.Null);
         Assert.That(result.EndpointTests, Is.Not.Empty);
         Assert.That(result.EndpointTests.All(e => e.TestResults.Count == 0), Is.True);
+        Assert.That(result.EndpointTests.All(e => e.ValidationErrors != null), Is.True);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithIncludeTestResultsFalse_PreservesFlattenedValidationErrors()
+    {
+        // Arrange
+        var json = CreateOpenApi30SpecWithResponseSchema();
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions { IncludeTestResults = false, TestEndpoints = true, ValidateSpecification = false }
+        };
+
+        _jsonValidatorServiceMock
+            .Setup(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = false,
+                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                {
+                    new()
+                    {
+                        Path = "data[0].name",
+                        Message = "data[0].name is required",
+                        ErrorCode = "VALIDATION_ERROR",
+                        Severity = "Error"
+                    }
+                }
+            });
+
+        SetupHttpMock(json, endpointResponseBody: "[{\"name\":\"a\"}]");
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.EndpointTests, Is.Not.Empty);
+        Assert.That(result.EndpointTests.All(e => e.TestResults.Count == 0), Is.True);
+        Assert.That(result.EndpointTests.Any(e => e.ValidationErrors.Any()), Is.True);
     }
 
     #endregion

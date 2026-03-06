@@ -172,6 +172,47 @@ public class FeedValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateSingleFeedAsync_WithInvalidFeed_UsesFlattenedEndpointValidationErrors()
+    {
+        // Arrange
+        var service = CreateService();
+        var feed = new ServiceFeed { Id = "1", UrlField = "https://example.com" };
+
+        var endpoint = new EndpointTestResult
+        {
+            Path = "/services",
+            Method = "GET",
+            TestResults = new List<HttpTestResult>
+            {
+                new HttpTestResult { IsSuccessStatusCode = true }
+            }
+        };
+        endpoint.ValidationErrors = new List<ValidationError>
+        {
+            new() { Path = "/services/name", Message = "missing name", ErrorCode = "E1", Severity = "Error" },
+            new() { Path = "/services/id", Message = "missing id", ErrorCode = "E2", Severity = "Error" }
+        };
+
+        var validationResult = new OpenApiValidationResult
+        {
+            IsValid = false,
+            Duration = TimeSpan.FromSeconds(1),
+            EndpointTests = new List<EndpointTestResult> { endpoint }
+        };
+
+        _validationServiceMock
+            .Setup(x => x.ValidateOpenApiSpecificationAsync(It.IsAny<OpenApiValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(validationResult);
+
+        // Act
+        var result = await service.ValidateSingleFeedAsync(feed);
+
+        // Assert
+        Assert.That(result.ValidationErrorCount, Is.EqualTo(2));
+        Assert.That(result.ErrorMessage, Does.Contain("missing name"));
+    }
+
+    [Test]
     public async Task ValidateSingleFeedAsync_WithHttpError_ReturnsDownFeed()
     {
         // Arrange
