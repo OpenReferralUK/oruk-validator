@@ -141,7 +141,8 @@ public class FeedValidationController : ControllerBase
       return NotFound(new { error = "Feed not found", feedId });
     }
 
-    _logger.LogInformation("Manual validation triggered for feed {FeedId}", feedId);
+    var safeFeedId = feedId?.Replace("\r", string.Empty).Replace("\n", string.Empty);
+    _logger.LogInformation("Manual validation triggered for feed {FeedId}", safeFeedId);
 
     var result = await _feedValidationService.ValidateSingleFeedAsync(feed, cancellationToken);
 
