@@ -15,15 +15,18 @@ internal class OpenApiSpecFetcher
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private readonly ISchemaResolverService _schemaResolverService;
+    private readonly bool _allowUserSuppliedAuth;
 
     public OpenApiSpecFetcher(
         HttpClient httpClient,
         ILogger logger,
-        ISchemaResolverService schemaResolverService)
+        ISchemaResolverService schemaResolverService,
+        bool allowUserSuppliedAuth)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _schemaResolverService = schemaResolverService ?? throw new ArgumentNullException(nameof(schemaResolverService));
+        _allowUserSuppliedAuth = allowUserSuppliedAuth;
     }
 
     /// <summary>
@@ -52,11 +55,22 @@ internal class OpenApiSpecFetcher
 
             using var request = new HttpRequestMessage(HttpMethod.Get, specUrl);
 
-            // Apply authentication only if it passes strict validation
-            var validatedAuth = ValidateAuthentication(auth);
-            if (validatedAuth != null)
+            // Apply authentication only if it is allowed by server configuration and passes strict validation
+            DataSourceAuthentication? validatedAuth = null;
+            if (_allowUserSuppliedAuth)
             {
-                ApplyAuthentication(request, validatedAuth);
+                validatedAuth = ValidateAuthentication(auth);
+                if (validatedAuth != null)
+                {
+                    ApplyAuthentication(request, validatedAuth);
+                }
+            }
+            else if (auth != null)
+            {
+                _logger.LogWarning(
+                    "User-supplied authentication was provided but is disabled by server configuration. " +
+                    "Skipping authentication headers for request to {SpecUrl}",
+                    safeSpecUrl);
             }
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
