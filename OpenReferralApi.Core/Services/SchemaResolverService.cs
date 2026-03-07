@@ -169,6 +169,14 @@ public class SchemaResolverService : ISchemaResolverService
 
     var sanitized = new string(sanitizedChars);
 
+    // Normalize internal whitespace to a single space to avoid confusing spacing in logs.
+    if (sanitized.Length > 0)
+    {
+      sanitized = string.Join(' ',
+        sanitized
+          .Split((char[])null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
     // Limit length to prevent log flooding
     const int maxLength = 500;
     if (sanitized.Length > maxLength)
@@ -176,7 +184,13 @@ public class SchemaResolverService : ISchemaResolverService
       sanitized = sanitized.Substring(0, maxLength) + "...(truncated)";
     }
 
-    return sanitized;
+    // Escape brace characters that might be interpreted specially by some logging frameworks
+    sanitized = sanitized
+      .Replace("{", "{{")
+      .Replace("}", "}}");
+
+    // Clearly mark user-supplied content so it cannot be mistaken for static log text.
+    return "[user: " + sanitized + "]";
   }
 
   /// <summary>
