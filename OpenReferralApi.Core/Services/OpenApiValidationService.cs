@@ -87,12 +87,11 @@ public class OpenApiValidationService : IOpenApiValidationService
             bool isResolved = false;
             if (!string.IsNullOrEmpty(request.OpenApiSchema?.Url))
             {
-                // If user-supplied authentication is not allowed by server configuration,
-                // ignore any authentication details provided in the request to avoid
-                // user-controlled bypass of authentication policy.
-                var effectiveAuth = _allowUserSuppliedAuth
-                    ? request.OpenApiSchema.Authentication
-                    : null;
+                // Always ignore authentication details provided in the request body to ensure that
+                // user-controlled data cannot influence whether or how authentication is applied
+                // when fetching the OpenAPI specification. Any authentication used here must come
+                // from trusted, server-side configuration.
+                DataSourceAuthentication? effectiveAuth = null;
 
                 // Fetch OpenAPI spec but defer resolution until we know we need it
                 // This avoids expensive resolution when we're only validating spec structure
