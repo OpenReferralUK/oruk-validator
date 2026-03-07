@@ -253,8 +253,8 @@ internal class OpenApiSpecFetcher
             var credentials = Convert.ToBase64String(
                 Encoding.ASCII.GetBytes($"{auth.BasicAuth.Username}:{auth.BasicAuth.Password}"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-            _logger.LogDebug("Applied Basic authentication for user: {Username}",
-                SchemaResolverService.SanitizeStringForLogging(auth.BasicAuth.Username));
+            // Intentionally avoid logging user-supplied authentication identifiers
+            _logger.LogDebug("Applied Basic authentication");
         }
 
         // Apply custom headers
