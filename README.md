@@ -115,6 +115,8 @@ When running locally in development mode, interactive API documentation is avail
 
 The OpenReferral API validation service supports multiple authentication methods for testing protected API endpoints. Authentication can be configured when making validation requests to ensure the validator can access secured endpoints.
 
+Only one authentication method is permitted per authentication object. For `openApiSchema.authentication` and `dataSourceAuth`, provide exactly one of: `apiKey` (+ optional `apiKeyHeader`), `bearerToken`, `basicAuth`, or `customHeaders`.
+
 ### Authentication Types
 
 #### API Key Authentication
@@ -195,29 +197,8 @@ Add any custom HTTP headers required by your API:
 }
 ```
 
-Custom headers are added to all endpoint requests and can be combined with other authentication methods.
-
-#### Multiple Authentication Methods
-
-You can combine multiple authentication methods in a single request:
-
-```json
-{
-  "openApiSchema": {
-    "url": "https://api.example.com/openapi.json"
-  },
-  "baseUrl": "https://api.example.com",
-  "dataSourceAuth": {
-    "bearerToken": "your-jwt-token",
-    "customHeaders": {
-      "X-Client-Id": "client-123",
-      "X-Tenant-Id": "tenant-456"
-    }
-  }
-}
-```
-
-All specified authentication methods will be applied to endpoint requests.
+Custom headers are added to all endpoint requests.
+Custom headers must be used as the only configured method in the auth object.
 
 ### Security Considerations
 
