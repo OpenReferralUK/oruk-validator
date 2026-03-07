@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Options;
+using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Services;
@@ -16,17 +18,16 @@ public class FeedValidationBackgroundService : BackgroundService
 
   public FeedValidationBackgroundService(
       IServiceProvider serviceProvider,
-      IConfiguration configuration,
+      IOptions<FeedValidationOptions> options,
       ILogger<FeedValidationBackgroundService> logger)
   {
     _serviceProvider = serviceProvider;
     _logger = logger;
 
-    // Read configuration
-    _enabled = configuration.GetValue<bool>("FeedValidation:Enabled", false);
-    _validationInterval = TimeSpan.FromHours(
-        configuration.GetValue<double>("FeedValidation:IntervalHours", 24));
-    _runAtMidnight = configuration.GetValue<bool>("FeedValidation:RunAtMidnight", true);
+    // Read configuration from options
+    _enabled = options.Value.Enabled;
+    _validationInterval = TimeSpan.FromHours(options.Value.IntervalHours);
+    _runAtMidnight = options.Value.RunAtMidnight;
   }
 
   protected override async Task ExecuteAsync(CancellationToken stoppingToken)

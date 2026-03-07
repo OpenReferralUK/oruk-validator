@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using MongoDB.Bson;
 using OpenReferralApi.Core.Models;
@@ -24,13 +24,12 @@ public class FeedValidationService : IFeedValidationService
 
   public FeedValidationService(
       IMongoClient mongoClient,
-      IConfiguration configuration,
+      IOptions<DatabaseOptions> databaseOptions,
       IOpenApiValidationService validationService,
       ILogger<FeedValidationService> logger)
   {
-    var databaseName = configuration.GetValue<string>("Database:DatabaseName") ?? "oruk-v3";
-    var database = mongoClient.GetDatabase(databaseName);
-    _servicesCollection = database.GetCollection<ServiceFeed>("services");
+    var database = mongoClient.GetDatabase(databaseOptions.Value.DatabaseName);
+    _servicesCollection = database.GetCollection<ServiceFeed>(databaseOptions.Value.ServicesCollection);
     _validationService = validationService;
     _logger = logger;
   }
