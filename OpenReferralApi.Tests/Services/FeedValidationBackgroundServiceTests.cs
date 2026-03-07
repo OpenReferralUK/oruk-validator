@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
+using OpenReferralApi.Core.Models;
 using OpenReferralApi.Services;
 
 namespace OpenReferralApi.Tests.Services;
@@ -9,7 +11,6 @@ namespace OpenReferralApi.Tests.Services;
 public class FeedValidationBackgroundServiceTests
 {
     private Mock<IServiceProvider> _serviceProviderMock;
-    private IConfiguration _configuration;
     private Mock<ILogger<FeedValidationBackgroundService>> _loggerMock;
 
     [SetUp]
@@ -17,25 +18,23 @@ public class FeedValidationBackgroundServiceTests
     {
         _serviceProviderMock = new Mock<IServiceProvider>();
         _loggerMock = new Mock<ILogger<FeedValidationBackgroundService>>();
-
-        // Create a real configuration to avoid mocking extension methods
-        var configBuilder = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                { "FeedValidation:Enabled", "true" },
-                { "FeedValidation:IntervalHours", "24" },
-                { "FeedValidation:RunAtMidnight", "true" }
-            });
-        _configuration = configBuilder.Build();
     }
 
     [Test]
     public void ServiceCreation_WithValidConfiguration_DoesNotThrow()
     {
+        // Arrange
+        var options = Options.Create(new FeedValidationOptions
+        {
+            Enabled = true,
+            IntervalHours = 24,
+            RunAtMidnight = true
+        });
+
         // Act
         var service = new FeedValidationBackgroundService(
             _serviceProviderMock.Object,
-            _configuration,
+            options,
             _loggerMock.Object);
 
         // Assert
@@ -46,17 +45,15 @@ public class FeedValidationBackgroundServiceTests
     public void ServiceCreation_WithDisabledConfiguration_DoesNotThrow()
     {
         // Arrange
-        var configBuilder = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                { "FeedValidation:Enabled", "false" }
-            });
-        var config = configBuilder.Build();
+        var options = Options.Create(new FeedValidationOptions
+        {
+            Enabled = false
+        });
 
         // Act
         var service = new FeedValidationBackgroundService(
             _serviceProviderMock.Object,
-            config,
+            options,
             _loggerMock.Object);
 
         // Assert
@@ -67,9 +64,15 @@ public class FeedValidationBackgroundServiceTests
     public async Task StopAsync_LogsStoppingMessage()
     {
         // Arrange
+        var options = Options.Create(new FeedValidationOptions
+        {
+            Enabled = true,
+            IntervalHours = 24,
+            RunAtMidnight = true
+        });
         var service = new FeedValidationBackgroundService(
             _serviceProviderMock.Object,
-            _configuration,
+            options,
             _loggerMock.Object);
 
         // Act
@@ -83,18 +86,16 @@ public class FeedValidationBackgroundServiceTests
     public void ServiceCreation_ReadsMidnightConfiguration()
     {
         // Arrange
-        var configBuilder = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                { "FeedValidation:Enabled", "true" },
-                { "FeedValidation:RunAtMidnight", "false" }
-            });
-        var config = configBuilder.Build();
+        var options = Options.Create(new FeedValidationOptions
+        {
+            Enabled = true,
+            RunAtMidnight = false
+        });
 
         // Act
         var service = new FeedValidationBackgroundService(
             _serviceProviderMock.Object,
-            config,
+            options,
             _loggerMock.Object);
 
         // Assert
@@ -105,18 +106,16 @@ public class FeedValidationBackgroundServiceTests
     public void ServiceCreation_ReadsIntervalConfiguration()
     {
         // Arrange
-        var configBuilder = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                { "FeedValidation:Enabled", "true" },
-                { "FeedValidation:IntervalHours", "12" }
-            });
-        var config = configBuilder.Build();
+        var options = Options.Create(new FeedValidationOptions
+        {
+            Enabled = true,
+            IntervalHours = 12
+        });
 
         // Act
         var service = new FeedValidationBackgroundService(
             _serviceProviderMock.Object,
-            config,
+            options,
             _loggerMock.Object);
 
         // Assert

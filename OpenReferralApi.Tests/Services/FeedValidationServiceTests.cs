@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Moq;
 using OpenReferralApi.Core.Models;
@@ -12,21 +13,12 @@ public class FeedValidationServiceTests
 {
     private Mock<IOpenApiValidationService> _validationServiceMock;
     private Mock<ILogger<FeedValidationService>> _loggerMock;
-    private IConfiguration _configuration;
 
     [SetUp]
     public void Setup()
     {
         _validationServiceMock = new Mock<IOpenApiValidationService>();
         _loggerMock = new Mock<ILogger<FeedValidationService>>();
-
-        // Create a real configuration to avoid mocking extension methods
-        var configBuilder = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                { "Database:DatabaseName", "test-db" }
-            });
-        _configuration = configBuilder.Build();
     }
 
     private FeedValidationService CreateService()
@@ -34,6 +26,11 @@ public class FeedValidationServiceTests
         var mongoClientMock = new Mock<IMongoClient>();
         var mongoDatabaseMock = new Mock<IMongoDatabase>();
         var collectionMock = new Mock<IMongoCollection<ServiceFeed>>();
+        var databaseOptions = Options.Create(new DatabaseOptions
+        {
+            DatabaseName = "test-db",
+            ServicesCollection = "services"
+        });
 
         mongoClientMock
             .Setup(x => x.GetDatabase("test-db", null))
@@ -45,7 +42,7 @@ public class FeedValidationServiceTests
 
         return new FeedValidationService(
             mongoClientMock.Object,
-            _configuration,
+            databaseOptions,
             _validationServiceMock.Object,
             _loggerMock.Object);
     }
@@ -55,6 +52,11 @@ public class FeedValidationServiceTests
         var mongoClientMock = new Mock<IMongoClient>();
         var mongoDatabaseMock = new Mock<IMongoDatabase>();
         collectionMock = new Mock<IMongoCollection<ServiceFeed>>();
+        var databaseOptions = Options.Create(new DatabaseOptions
+        {
+            DatabaseName = "test-db",
+            ServicesCollection = "services"
+        });
 
         mongoClientMock
             .Setup(x => x.GetDatabase("test-db", null))
@@ -66,7 +68,7 @@ public class FeedValidationServiceTests
 
         return new FeedValidationService(
             mongoClientMock.Object,
-            _configuration,
+            databaseOptions,
             _validationServiceMock.Object,
             _loggerMock.Object);
     }

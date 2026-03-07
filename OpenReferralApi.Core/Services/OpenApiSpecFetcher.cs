@@ -30,6 +30,49 @@ internal class OpenApiSpecFetcher
     }
 
     /// <summary>
+    /// Validates user-supplied authentication according to server-side policy.
+    /// Returns a validated authentication object or null if no authentication should be applied.
+    /// </summary>
+    /// <param name="safeSpecUrl">Sanitized URL used only for logging.</param>
+    /// <param name="auth">User-supplied authentication details.</param>
+    /// <param name="isHttps">Whether the target URL is HTTPS.</param>
+    private DataSourceAuthentication? TryGetValidatedAuthentication(
+        string safeSpecUrl,
+        DataSourceAuthentication? auth,
+        bool isHttps)
+    {
+        if (auth == null)
+        {
+            return null;
+        }
+
+        // If server-side configuration does not allow user-supplied authentication,
+        // treat this as non-fatal and simply skip applying any credentials.
+        if (!_allowUserSuppliedAuth)
+        {
+            _logger.LogWarning(
+                "User-supplied authentication was provided but is disabled by server configuration. " +
+                "Skipping authentication headers for request to {SpecUrl}",
+                safeSpecUrl);
+            return null;
+        }
+
+        // Enforce HTTPS requirement when sending authentication credentials.
+        if (!isHttps)
+        {
+            _logger.LogError(
+                "Refusing to send authentication credentials over a non-HTTPS connection to {SpecUrl}",
+                safeSpecUrl);
+            throw new InvalidOperationException(
+                $"Authentication credentials may only be used with HTTPS endpoints. URL: {safeSpecUrl}");
+        }
+
+        // Only validated authentication information is used to guard sensitive operations.
+        var validatedAuth = ValidateAuthentication(auth);
+        return validatedAuth;
+    }
+
+    /// <summary>
     /// Fetches and optionally resolves an OpenAPI specification from a URL.
     /// </summary>
     /// <param name="specUrl">The URL of the OpenAPI specification</param>
@@ -68,35 +111,22 @@ internal class OpenApiSpecFetcher
             // Server-side policy: only consider applying authentication if the feature is enabled.
             var shouldApplyAuth = _allowUserSuppliedAuth && isHttps;
 
-            if (auth != null)
+            // Never decide to apply authentication based solely on whether user-supplied
+            // credentials are present. Instead, require that server-side policy allows
+            // user-supplied authentication and that the credentials pass strict validation.
+            if (!_allowUserSuppliedAuth && auth != null)
             {
-                if (!shouldApplyAuth)
+                _logger.LogWarning(
+                    "User-supplied authentication was provided but is disabled by server configuration. " +
+                    "Skipping authentication headers for request to {SpecUrl}",
+                    safeSpecUrl);
+            }
+            else if (shouldApplyAuth)
+            {
+                validatedAuth = TryGetValidatedAuthentication(safeSpecUrl, auth, isHttps);
+                if (validatedAuth != null)
                 {
-                    // Either user-supplied auth is disabled by configuration or the URL is not HTTPS.
-                    if (!_allowUserSuppliedAuth)
-                    {
-                        _logger.LogWarning(
-                            "User-supplied authentication was provided but is disabled by server configuration. " +
-                            "Skipping authentication headers for request to {SpecUrl}",
-                            safeSpecUrl);
-                    }
-                    else
-                    {
-                        _logger.LogError(
-                            "Refusing to send authentication credentials over a non-HTTPS connection to {SpecUrl}",
-                            safeSpecUrl);
-                        throw new InvalidOperationException(
-                            $"Authentication credentials may only be used with HTTPS endpoints. URL: {safeSpecUrl}");
-                    }
-                }
-                else
-                {
-                    // Only validated authentication information is used to guard sensitive operations.
-                    validatedAuth = ValidateAuthentication(auth);
-                    if (validatedAuth != null)
-                    {
-                        ApplyAuthentication(request, validatedAuth);
-                    }
+                    ApplyAuthentication(request, validatedAuth);
                 }
             }
 

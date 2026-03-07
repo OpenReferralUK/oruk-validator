@@ -137,7 +137,7 @@ public class OpenApiDiscoveryServiceTests
 
         // Assert
         Assert.That(url, Does.Contain("1.0/openapi.json"));
-        Assert.That(reason, Does.Contain("Standard version 1.0"));
+        Assert.That(reason, Does.Contain("Standard version [user: 1.0] read from '/' endpoint"));
     }
 
     [Test]
@@ -154,7 +154,7 @@ public class OpenApiDiscoveryServiceTests
 
         // Assert
         Assert.That(url, Does.Contain("3.0/openapi.json"));
-        Assert.That(reason, Does.Contain("Standard version 3.0"));
+        Assert.That(reason, Does.Contain("Standard version [user: 3.0] read from '/' endpoint"));
     }
 
     [Test]
@@ -171,7 +171,7 @@ public class OpenApiDiscoveryServiceTests
 
         // Assert
         Assert.That(url, Does.Contain("3.0/openapi.json"));
-        Assert.That(reason, Does.Contain("Standard version HSDS-UK-3.0"));
+        Assert.That(reason, Does.Contain("Standard version [user: HSDS-UK-3.0] read from '/' endpoint"));
     }
 
     [Test]
@@ -188,7 +188,7 @@ public class OpenApiDiscoveryServiceTests
 
         // Assert
         Assert.That(url, Does.Contain("3.1/openapi.json"));
-        Assert.That(reason, Does.Contain("Standard version V3.1"));
+        Assert.That(reason, Does.Contain("Standard version [user: V3.1] read from '/' endpoint"));
     }
 
     [Test]
@@ -298,7 +298,7 @@ public class OpenApiDiscoveryServiceTests
 
         // Assert
         Assert.That(url, Does.Contain("3.0/openapi.json"));
-        Assert.That(reason, Does.Contain("Standard version 3.0"));
+        Assert.That(reason, Does.Contain("Standard version [user: 3.0] read from '/' endpoint"));
     }
 
     private void SetupHttpResponse(HttpStatusCode statusCode, string content)

@@ -32,6 +32,24 @@ builder.Services.Configure<SpecificationOptions>(
 builder.Services.Configure<CacheOptions>(
     builder.Configuration.GetSection(CacheOptions.SectionName));
 
+builder.Services.Configure<AuthenticationOptions>(
+    builder.Configuration.GetSection(AuthenticationOptions.SectionName));
+
+builder.Services.Configure<DatabaseOptions>(
+    builder.Configuration.GetSection(DatabaseOptions.SectionName));
+
+builder.Services.Configure<FeedValidationOptions>(
+    builder.Configuration.GetSection(FeedValidationOptions.SectionName));
+
+builder.Services.Configure<SecurityOptions>(
+    builder.Configuration.GetSection(SecurityOptions.SectionName));
+
+builder.Services.Configure<RateLimitingOptions>(
+    builder.Configuration.GetSection(RateLimitingOptions.SectionName));
+
+builder.Services.Configure<OpenTelemetryOptions>(
+    builder.Configuration.GetSection(OpenTelemetryOptions.SectionName));
+
 // Add services to the container.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -53,14 +71,13 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 // CORS - Environment-specific origins
-var allowedOrigins = builder.Configuration.GetSection("Security:AllowedCorsOrigins").Get<string[]>()
-                     ?? new[] { "*" };
+var securityOptions = builder.Configuration.GetSection(SecurityOptions.SectionName).Get<SecurityOptions>() ?? new SecurityOptions();
 
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        if (allowedOrigins.Contains("*"))
+        if (securityOptions.AllowedCorsOrigins.Contains("*"))
         {
             policy.AllowAnyOrigin()
                   .AllowAnyMethod()
@@ -68,7 +85,7 @@ builder.Services.AddCors(options =>
         }
         else
         {
-            policy.WithOrigins(allowedOrigins)
+            policy.WithOrigins(securityOptions.AllowedCorsOrigins)
                   .AllowAnyMethod()
                   .AllowAnyHeader()
                   .AllowCredentials();
@@ -77,32 +94,33 @@ builder.Services.AddCors(options =>
 });
 
 // Rate Limiting
+var rateLimitingOptions = builder.Configuration.GetSection(RateLimitingOptions.SectionName).Get<RateLimitingOptions>() ?? new RateLimitingOptions();
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
     options.AddFixedWindowLimiter("fixed", opt =>
     {
-        opt.PermitLimit = builder.Configuration.GetValue<int>("RateLimiting:PermitLimit", 100);
-        opt.Window = TimeSpan.FromSeconds(builder.Configuration.GetValue<int>("RateLimiting:Window", 60));
+        opt.PermitLimit = rateLimitingOptions.PermitLimit;
+        opt.Window = TimeSpan.FromSeconds(rateLimitingOptions.Window);
         opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        opt.QueueLimit = builder.Configuration.GetValue<int>("RateLimiting:QueueLimit", 0);
+        opt.QueueLimit = rateLimitingOptions.QueueLimit;
     });
 });
 
 // Configure HTTP client with environment-based security settings
-var validateSslCertificates = builder.Configuration.GetValue<bool>("Security:ValidateSslCertificates", true);
-
 builder.Services.AddHttpClient(nameof(OpenApiValidationService), client =>
 {
     client.DefaultRequestHeaders.Add("User-Agent", "OpenReferral-Validator/1.0");
     client.Timeout = TimeSpan.FromMinutes(2);
 })
-.ConfigurePrimaryHttpMessageHandler(() =>
+.ConfigurePrimaryHttpMessageHandler(sp =>
 {
+    var securityOpts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<SecurityOptions>>().Value;
     var handler = new HttpClientHandler();
 
-    if (!validateSslCertificates)
+    if (!securityOpts.ValidateSslCertificates)
     {
         handler.ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true;
     }
@@ -133,13 +151,13 @@ builder.Services.AddOutputCache(options =>
 var healthChecksBuilder = builder.Services.AddHealthChecks()
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "ready" });
 
-var mongoConnectionString = builder.Configuration.GetValue<string>("Database:ConnectionString");
-if (!string.IsNullOrEmpty(mongoConnectionString))
+var databaseOptions = builder.Configuration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>() ?? new DatabaseOptions();
+if (!string.IsNullOrEmpty(databaseOptions.ConnectionString))
 {
     // Register MongoDB client for health checks and feed validation
     builder.Services.AddSingleton<MongoDB.Driver.IMongoClient>(sp =>
     {
-        return new MongoDB.Driver.MongoClient(mongoConnectionString);
+        return new MongoDB.Driver.MongoClient(databaseOptions.ConnectionString);
     });
 
     healthChecksBuilder.AddMongoDb(
@@ -168,25 +186,16 @@ builder.Services.AddSingleton<IRequestProcessingService, RequestProcessingServic
 builder.Services.AddScoped<ISchemaResolverService, SchemaResolverService>();
 
 builder.Services.AddScoped<IJsonValidatorService, JsonValidatorService>();
-builder.Services.AddScoped<IOpenApiValidationService>(provider =>
-{
-    var logger = provider.GetRequiredService<ILogger<OpenApiValidationService>>();
-    var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
-    var httpClient = httpClientFactory.CreateClient(nameof(OpenApiValidationService));
-    var jsonValidatorService = provider.GetRequiredService<IJsonValidatorService>();
-    var schemaResolverService = provider.GetRequiredService<ISchemaResolverService>();
-    var discoveryService = provider.GetRequiredService<IOpenApiDiscoveryService>();
-    return new OpenApiValidationService(logger, httpClient, jsonValidatorService, schemaResolverService, discoveryService);
-});
+builder.Services.AddScoped<IOpenApiValidationService, OpenApiValidationService>();
 
 builder.Services.AddScoped<IOpenApiDiscoveryService, OpenApiDiscoveryService>();
 builder.Services.AddScoped<IOpenReferralUKValidationResponseMapper, OpenReferralUKValidationResponseMapper>();
 
 // Configure Memory Cache with size limit from cache options
-var cacheMaxSizeMB = builder.Configuration.GetValue<int>("Cache:MaxSizeMB", 100);
 builder.Services.AddMemoryCache(options =>
 {
-    options.SizeLimit = cacheMaxSizeMB * 1024 * 1024; // Convert MB to bytes
+    var cacheOpts = builder.Configuration.GetSection(CacheOptions.SectionName).Get<CacheOptions>() ?? new CacheOptions();
+    options.SizeLimit = cacheOpts.MaxSizeMB * 1024 * 1024; // Convert MB to bytes
 });
 
 // Exception Handlers
@@ -194,8 +203,8 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
 // OpenTelemetry Configuration
-var otelEnabled = builder.Configuration.GetValue<bool>("OpenTelemetry:Enabled", false);
-if (otelEnabled)
+var otelOptions = builder.Configuration.GetSection(OpenTelemetryOptions.SectionName).Get<OpenTelemetryOptions>() ?? new OpenTelemetryOptions();
+if (otelOptions.Enabled)
 {
     var resourceBuilder = ResourceBuilder.CreateDefault()
         .AddService(
@@ -215,12 +224,11 @@ if (otelEnabled)
                 .AddHttpClientInstrumentation()
                 .AddMeter(Instrumentation.ServiceName);
 
-            var otlpEndpoint = builder.Configuration.GetValue<string>("OpenTelemetry:OtlpEndpoint");
-            if (!string.IsNullOrEmpty(otlpEndpoint))
+            if (!string.IsNullOrEmpty(otelOptions.OtlpEndpoint))
             {
                 metrics.AddOtlpExporter(options =>
                 {
-                    options.Endpoint = new Uri(otlpEndpoint);
+                    options.Endpoint = new Uri(otelOptions.OtlpEndpoint);
                 });
             }
 
@@ -244,12 +252,11 @@ if (otelEnabled)
                 .AddHttpClientInstrumentation()
                 .AddSource(Instrumentation.ActivitySource.Name);
 
-            var otlpEndpoint = builder.Configuration.GetValue<string>("OpenTelemetry:OtlpEndpoint");
-            if (!string.IsNullOrEmpty(otlpEndpoint))
+            if (!string.IsNullOrEmpty(otelOptions.OtlpEndpoint))
             {
                 tracing.AddOtlpExporter(options =>
                 {
-                    options.Endpoint = new Uri(otlpEndpoint);
+                    options.Endpoint = new Uri(otelOptions.OtlpEndpoint);
                 });
             }
 
