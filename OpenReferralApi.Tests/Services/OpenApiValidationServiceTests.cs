@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Models;
@@ -13,6 +14,7 @@ public class OpenApiValidationServiceTests
     private Mock<IJsonValidatorService> _jsonValidatorServiceMock;
     private Mock<ISchemaResolverService> _schemaResolverServiceMock;
     private Mock<IOpenApiDiscoveryService> _discoveryServiceMock;
+    private IOptions<AuthenticationOptions> _authOptions;
     private HttpClient _httpClient;
     private OpenApiValidationService _service;
 
@@ -50,13 +52,15 @@ public class OpenApiValidationServiceTests
         var mockHandler = new MockHttpMessageHandler();
         _httpClient = new HttpClient(mockHandler);
 
+        _authOptions = Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true });
+
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             _httpClient,
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _discoveryServiceMock.Object,
-            allowUserSuppliedAuth: true);
+            _authOptions);
     }
 
     [TearDown]
@@ -411,7 +415,7 @@ public class OpenApiValidationServiceTests
         var service = new OpenApiValidationService(
             _loggerMock.Object, httpClient, _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object, _discoveryServiceMock.Object,
-            allowUserSuppliedAuth: true);
+            Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
 
         try
         {
@@ -448,7 +452,7 @@ public class OpenApiValidationServiceTests
         var service = new OpenApiValidationService(
             _loggerMock.Object, httpClient, _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object, _discoveryServiceMock.Object,
-            allowUserSuppliedAuth: true);
+            Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
 
         try
         {
@@ -488,7 +492,7 @@ public class OpenApiValidationServiceTests
         var service = new OpenApiValidationService(
             _loggerMock.Object, httpClient, _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object, _discoveryServiceMock.Object,
-            allowUserSuppliedAuth: true);
+            Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
 
         try
         {
@@ -541,7 +545,7 @@ public class OpenApiValidationServiceTests
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _discoveryServiceMock.Object,
-            allowUserSuppliedAuth: true);
+            Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
 
         // Act
         var result = _service.ValidateOpenApiSpecificationAsync(request, cts.Token).GetAwaiter().GetResult();
@@ -1745,7 +1749,7 @@ public class OpenApiValidationServiceTests
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _discoveryServiceMock.Object,
-            allowUserSuppliedAuth: false);
+            Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = false }));
 
         var request = new OpenApiValidationRequest
         {
@@ -1809,7 +1813,7 @@ public class OpenApiValidationServiceTests
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _discoveryServiceMock.Object,
-            allowUserSuppliedAuth: true);
+            _authOptions);
     }
 
     private void SetupHttpMock(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> handler)
@@ -1824,7 +1828,7 @@ public class OpenApiValidationServiceTests
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _discoveryServiceMock.Object,
-            allowUserSuppliedAuth: true);
+            _authOptions);
     }
 
     private string CreateOpenApi30Spec()

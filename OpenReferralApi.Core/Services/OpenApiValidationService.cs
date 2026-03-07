@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Models;
@@ -35,14 +36,14 @@ public class OpenApiValidationService : IOpenApiValidationService
         IJsonValidatorService jsonValidatorService,
         ISchemaResolverService schemaResolverService,
         IOpenApiDiscoveryService discoveryService,
-        bool allowUserSuppliedAuth = false)
+        IOptions<AuthenticationOptions> authOptions)
     {
         _logger = logger;
         _httpClient = httpClient;
         _jsonValidatorService = jsonValidatorService;
         _schemaResolverService = schemaResolverService;
         _discoveryService = discoveryService;
-        _allowUserSuppliedAuth = allowUserSuppliedAuth;
+        _allowUserSuppliedAuth = authOptions.Value.AllowUserSuppliedAuth;
         _specFetcher = new OpenApiSpecFetcher(httpClient, logger, schemaResolverService, allowUserSuppliedAuth: _allowUserSuppliedAuth);
     }
 
