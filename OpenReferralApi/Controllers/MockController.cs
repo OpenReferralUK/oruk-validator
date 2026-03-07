@@ -6,6 +6,8 @@ namespace OpenReferralApi.Controllers;
 
 [ApiController]
 [Route("api/[Controller]")]
+// This hides the entire controller from Swagger UI
+[ApiExplorerSettings(IgnoreApi = true)]
 public class MockController : ControllerBase
 {
     private const string MockPath = "Mocks/V3.0-UK-";
