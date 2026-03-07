@@ -1266,16 +1266,22 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     private DataSourceAuthentication? TryGetValidatedRequestAuthentication(string context, DataSourceAuthentication? auth)
     {
-        if (auth == null)
+        // Evaluate the server-side feature gate first so user-controlled request content
+        // cannot influence whether the authorization policy check is reached.
+        if (!_allowUserSuppliedAuth)
         {
+            if (auth != null)
+            {
+                _logger.LogWarning(
+                    "User-supplied authentication was provided for {Context} but is disabled by server configuration",
+                    SanitizeForLogging(context));
+            }
+
             return null;
         }
 
-        if (!_allowUserSuppliedAuth)
+        if (auth == null)
         {
-            _logger.LogWarning(
-                "User-supplied authentication was provided for {Context} but is disabled by server configuration",
-                SanitizeForLogging(context));
             return null;
         }
 
