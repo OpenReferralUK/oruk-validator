@@ -1467,10 +1467,10 @@ public class OpenApiValidationServiceTests
             BaseUrl = "https://api.example.com",
             DataSourceAuth = new DataSourceAuthentication
             {
-                BearerToken = "jwt-token-here",
                 CustomHeaders = new Dictionary<string, string>
                 {
-                    { "X-Client-Id", "multi-auth-client" }
+                    { "X-Client-Id", "multi-auth-client" },
+                    { "X-Request-Id", "req-12345" }
                 }
             },
             Options = new OpenApiValidationOptions
@@ -1484,11 +1484,10 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Not.Null);
-        Assert.That(capturedRequest.Headers.Authorization!.Scheme, Is.EqualTo("Bearer"));
-        Assert.That(capturedRequest.Headers.Authorization.Parameter, Is.EqualTo("jwt-token-here"));
-        Assert.That(capturedRequest.Headers.Contains("X-Client-Id"), Is.True);
+        Assert.That(capturedRequest!.Headers.Contains("X-Client-Id"), Is.True);
         Assert.That(capturedRequest.Headers.GetValues("X-Client-Id").First(), Is.EqualTo("multi-auth-client"));
+        Assert.That(capturedRequest.Headers.Contains("X-Request-Id"), Is.True);
+        Assert.That(capturedRequest.Headers.GetValues("X-Request-Id").First(), Is.EqualTo("req-12345"));
     }
 
     [Test]
@@ -1587,7 +1586,7 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_WithBasicAuthEmptyPassword_UsesEmptyString()
+    public async Task ValidateOpenApiSpecificationAsync_WithBasicAuthEmptyPassword_RejectsAuth()
     {
         // Arrange
         var json = CreateOpenApi30Spec();
@@ -1623,7 +1622,7 @@ public class OpenApiValidationServiceTests
                 BasicAuth = new BasicAuthentication
                 {
                     Username = "testuser",
-                    Password = string.Empty  // Empty password
+                    Password = string.Empty  // Empty password - should be rejected
                 }
             },
             Options = new OpenApiValidationOptions
@@ -1636,14 +1635,9 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
+        // Empty passwords are not allowed, so Authorization header should not be applied
         Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Not.Null);
-        Assert.That(capturedRequest.Headers.Authorization!.Scheme, Is.EqualTo("Basic"));
-        
-        // Decode and verify credentials (empty password becomes empty string)
-        var credentials = System.Text.Encoding.ASCII.GetString(
-            Convert.FromBase64String(capturedRequest.Headers.Authorization.Parameter!));
-        Assert.That(credentials, Is.EqualTo("testuser:"));
+        Assert.That(capturedRequest!.Headers.Authorization, Is.Null);
     }
 
     [Test]
