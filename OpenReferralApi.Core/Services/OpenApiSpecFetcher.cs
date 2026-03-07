@@ -158,7 +158,7 @@ internal class OpenApiSpecFetcher
                     return null;
                 }
 
-                if (IsTooLong(value, MaxTokenLength))
+                if (string.IsNullOrEmpty(value) || IsTooLong(value, MaxTokenLength))
                 {
                     return null;
                 }
