@@ -174,7 +174,7 @@ public class SchemaResolverService : ISchemaResolverService
     {
       sanitized = string.Join(' ',
         sanitized
-          .Split((char[])null, StringSplitOptions.RemoveEmptyEntries));
+          .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
     // Limit length to prevent log flooding
