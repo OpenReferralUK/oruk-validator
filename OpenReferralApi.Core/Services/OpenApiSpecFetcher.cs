@@ -55,10 +55,27 @@ internal class OpenApiSpecFetcher
 
             using var request = new HttpRequestMessage(HttpMethod.Get, specUrl);
 
-            // Apply authentication only if it is allowed by server configuration and passes strict validation
+            // Apply authentication only if it is allowed by server configuration, the target
+            // URL uses HTTPS, and the authentication details pass strict validation.
             DataSourceAuthentication? validatedAuth = null;
-            if (_allowUserSuppliedAuth)
+
+            // Determine whether the target URL is using HTTPS. This is used as an additional
+            // server-side policy check before allowing any user-supplied authentication details
+            // to be sent to an external endpoint.
+            var uri = new Uri(specUrl);
+            var isHttps = string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+
+            if (_allowUserSuppliedAuth && auth != null)
             {
+                if (!isHttps)
+                {
+                    _logger.LogError(
+                        "Refusing to send authentication credentials over a non-HTTPS connection to {SpecUrl}",
+                        safeSpecUrl);
+                    throw new InvalidOperationException(
+                        $"Authentication credentials may only be used with HTTPS endpoints. URL: {safeSpecUrl}");
+                }
+
                 validatedAuth = ValidateAuthentication(auth);
                 if (validatedAuth != null)
                 {
