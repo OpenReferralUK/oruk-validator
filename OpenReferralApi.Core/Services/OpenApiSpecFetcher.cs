@@ -159,7 +159,7 @@ internal class OpenApiSpecFetcher
                 "X-Api-Key"
             };
 
-            var sanitizedHeaders = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            var sanitizedHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var kvp in auth.CustomHeaders)
             {
