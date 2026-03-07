@@ -86,6 +86,7 @@ internal class OpenApiSpecFetcher
 
     /// <summary>
     /// Validates authentication configuration before use.
+    /// Only returns a non-null value if the configuration passes strict validation.
     /// </summary>
     private static DataSourceAuthentication? ValidateAuthentication(DataSourceAuthentication? auth)
     {
@@ -94,11 +95,88 @@ internal class OpenApiSpecFetcher
             return null;
         }
 
-        // Validate that at least one authentication method is configured
+        // Normalize simple string fields
+        if (!string.IsNullOrWhiteSpace(auth.ApiKey))
+        {
+            auth.ApiKey = auth.ApiKey.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(auth.BearerToken))
+        {
+            auth.BearerToken = auth.BearerToken.Trim();
+        }
+
+        if (auth.BasicAuth != null)
+        {
+            if (!string.IsNullOrWhiteSpace(auth.BasicAuth.Username))
+            {
+                auth.BasicAuth.Username = auth.BasicAuth.Username.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(auth.BasicAuth.Password))
+            {
+                auth.BasicAuth.Password = auth.BasicAuth.Password.Trim();
+            }
+        }
+
+        // Simple length limits to avoid abuse
+        bool IsTooLong(string? value, int maxLength) =>
+            !string.IsNullOrEmpty(value) && value.Length > maxLength;
+
+        const int MaxTokenLength = 4096;
+        if (IsTooLong(auth.ApiKey, MaxTokenLength) ||
+            IsTooLong(auth.BearerToken, MaxTokenLength) ||
+            (auth.BasicAuth != null &&
+                (IsTooLong(auth.BasicAuth.Username, MaxTokenLength) ||
+                 IsTooLong(auth.BasicAuth.Password, MaxTokenLength))))
+        {
+            // Reject unreasonably large auth values
+            return null;
+        }
+
+        // Validate custom headers against a conservative allowlist
+        var hasCustomHeaders = false;
+        if (auth.CustomHeaders != null && auth.CustomHeaders.Count > 0)
+        {
+            var allowedHeaderNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Authorization",
+                "X-API-Key",
+                "X-Api-Key"
+            };
+
+            var sanitizedHeaders = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var kvp in auth.CustomHeaders)
+            {
+                var name = kvp.Key?.Trim();
+                var value = kvp.Value;
+
+                if (string.IsNullOrWhiteSpace(name) || !allowedHeaderNames.Contains(name))
+                {
+                    // Reject any disallowed or malformed header
+                    return null;
+                }
+
+                if (IsTooLong(value, MaxTokenLength))
+                {
+                    return null;
+                }
+
+                sanitizedHeaders[name] = value;
+            }
+
+            if (sanitizedHeaders.Count > 0)
+            {
+                auth.CustomHeaders = sanitizedHeaders;
+                hasCustomHeaders = true;
+            }
+        }
+
+        // Determine whether there is at least one valid authentication mechanism configured
         var hasApiKey = !string.IsNullOrEmpty(auth.ApiKey);
         var hasBearerToken = !string.IsNullOrEmpty(auth.BearerToken);
         var hasBasicAuth = auth.BasicAuth != null && !string.IsNullOrEmpty(auth.BasicAuth.Username);
-        var hasCustomHeaders = auth.CustomHeaders != null && auth.CustomHeaders.Count > 0;
 
         if (hasApiKey || hasBearerToken || hasBasicAuth || hasCustomHeaders)
         {

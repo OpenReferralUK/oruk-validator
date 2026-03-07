@@ -224,8 +224,8 @@ public class OpenApiSpecFetcherTests
         {
             CustomHeaders = new Dictionary<string, string>
             {
-                { "X-Client-Id", "client-123" },
-                { "X-Tenant-Id", "tenant-456" }
+                { "X-API-Key", "api-key-123" },
+                { "Authorization", "Bearer token-456" }
             }
         };
 
@@ -235,10 +235,10 @@ public class OpenApiSpecFetcherTests
         // Assert
         Assert.That(result, Is.Not.Null);
         Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Contains("X-Client-Id"), Is.True);
-        Assert.That(capturedRequest.Headers.GetValues("X-Client-Id").First(), Is.EqualTo("client-123"));
-        Assert.That(capturedRequest.Headers.Contains("X-Tenant-Id"), Is.True);
-        Assert.That(capturedRequest.Headers.GetValues("X-Tenant-Id").First(), Is.EqualTo("tenant-456"));
+        Assert.That(capturedRequest!.Headers.Contains("X-API-Key"), Is.True);
+        Assert.That(capturedRequest.Headers.GetValues("X-API-Key").First(), Is.EqualTo("api-key-123"));
+        Assert.That(capturedRequest.Headers.Contains("Authorization"), Is.True);
+        Assert.That(capturedRequest.Headers.GetValues("Authorization").First(), Is.EqualTo("Bearer token-456"));
     }
 
     [Test]
