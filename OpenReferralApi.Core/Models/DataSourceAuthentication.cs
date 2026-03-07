@@ -6,7 +6,7 @@ namespace OpenReferralApi.Core.Models;
 /// <summary>
 /// Represents authentication credentials and configuration for accessing the API server during endpoint testing
 /// </summary>
-public class DataSourceAuthentication
+public class DataSourceAuthentication : IAuthenticationConfig
 {
     [DefaultValue("")]
     [JsonProperty("apiKey")]

@@ -5,24 +5,24 @@ using OpenReferralApi.Core.Services;
 namespace OpenReferralApi.Tests.Services;
 
 [TestFixture]
-public class OpenApiToValidationResponseMapperTests
+public class OpenReferralUKValidationResponseMapperTests
 {
-    private OpenApiToValidationResponseMapper _mapper;
+    private OpenReferralUKValidationResponseMapper _mapper;
 
     [SetUp]
     public void Setup()
     {
-        _mapper = new OpenApiToValidationResponseMapper();
+        _mapper = new OpenReferralUKValidationResponseMapper();
     }
 
     [Test]
-    public void MapToValidationResponse_WithValidResult_ReturnsCorrectStructure()
+    public void MapToOpenReferralUKValidationResponse_WithValidResult_ReturnsCorrectStructure()
     {
         // Arrange
         var result = new OpenApiValidationResult
         {
             IsValid = true,
-            Metadata = new OpenApiValidationMetadata
+            Metadata = new CommonValidationMetadata
             {
                 BaseUrl = "https://api.example.com"
             },
@@ -42,7 +42,7 @@ public class OpenApiToValidationResponseMapperTests
         };
 
         // Act
-        var response = _mapper.MapToValidationResponse(result);
+        var response = _mapper.MapToOpenReferralUKValidationResponse(result);
 
         // Assert
         Assert.That(response, Is.Not.Null);
@@ -58,7 +58,7 @@ public class OpenApiToValidationResponseMapperTests
         var result = new OpenApiValidationResult
         {
             IsValid = true,
-            Metadata = new OpenApiValidationMetadata
+            Metadata = new CommonValidationMetadata
             {
                 BaseUrl = "https://api.example.com"
             },
@@ -77,7 +77,7 @@ public class OpenApiToValidationResponseMapperTests
         };
 
         // Act
-        var response = _mapper.MapToValidationResponse(result);
+        var response = _mapper.MapToOpenReferralUKValidationResponse(result);
 
         // Assert
         var json = JObject.FromObject(response);
@@ -106,7 +106,7 @@ public class OpenApiToValidationResponseMapperTests
         };
 
         // Act
-        var response = _mapper.MapToValidationResponse(result);
+        var response = _mapper.MapToOpenReferralUKValidationResponse(result);
 
         // Assert
         Assert.That(response, Is.Not.Null);

@@ -179,16 +179,13 @@ public class FeedValidationService : IFeedValidationService
       
       // Count all validation errors from endpoint test results
       result.ValidationErrorCount = validationResult.EndpointTests
-          .SelectMany(e => e.TestResults)
-          .Sum(tr => tr.ValidationResult?.Errors.Count ?? 0);
+          .Sum(e => e.ValidationErrors.Count);
 
       if (!validationResult.IsValid)
       {
         // Extract error messages from endpoint test results
         var errors = validationResult.EndpointTests
-            .SelectMany(e => e.TestResults)
-            .Where(tr => tr.ValidationResult != null)
-            .SelectMany(tr => tr.ValidationResult!.Errors)
+          .SelectMany(e => e.ValidationErrors)
             .Take(5)
             .Select(e => $"{e.Path}: {e.Message}")
             .ToList();

@@ -106,7 +106,7 @@ public class JsonValidatorService : IJsonValidatorService
             result.IsValid = !validationErrors.Any(e => e.Severity == "Error");
             result.Errors = validationErrors;
             result.SchemaVersion = "2020-12";
-            result.Metadata = new ValidationMetadata
+            result.Metadata = new CommonValidationMetadata
             {
                 SchemaTitle = GetSchemaTitle(request, schema),
                 SchemaDescription = GetSchemaDescription(request, schema),
@@ -178,7 +178,7 @@ public class JsonValidatorService : IJsonValidatorService
             result.IsValid = !schemaValidationErrors.Any();
             result.Errors = schemaValidationErrors;
             result.SchemaVersion = "2020-12";
-            result.Metadata = new ValidationMetadata
+            result.Metadata = new CommonValidationMetadata
             {
                 SchemaTitle = GetSchemaTitleFromObject(schema) ?? jsonSchema.Title,
                 SchemaDescription = GetSchemaDescriptionFromObject(schema) ?? jsonSchema.Description,

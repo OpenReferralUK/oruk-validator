@@ -17,6 +17,8 @@ public enum EndpointTestStatus
 /// </summary>
 public class EndpointTestResult
 {
+    private List<ValidationError>? _validationErrors;
+
     /// <summary>
     /// The URL path of the endpoint being tested (e.g., "/users/{id}", "/orders")
     /// Used to identify which endpoint this result corresponds to
@@ -77,5 +79,42 @@ public class EndpointTestResult
     /// </summary>
     [JsonProperty("testResults")]
     public List<HttpTestResult> TestResults { get; set; } = new();
+
+    /// <summary>
+    /// Flattened validation errors aggregated across all test results.
+    /// Provides direct access to endpoint-level issues without traversing nested test result objects.
+    /// </summary>
+    [JsonProperty("validationErrors")]
+    public List<ValidationError> ValidationErrors
+    {
+        get => _validationErrors ??= AggregateValidationErrors(TestResults);
+        set => _validationErrors = value;
+    }
+
+    /// <summary>
+    /// First failing test result for quick diagnostics, or first available result if none failed.
+    /// </summary>
+    [JsonProperty("primaryTestResult")]
+    public HttpTestResult? PrimaryTestResult =>
+        TestResults.FirstOrDefault(tr => tr.ValidationResult != null && !tr.ValidationResult.IsValid)
+        ?? TestResults.FirstOrDefault();
+
+    /// <summary>
+    /// Rebuilds the flattened endpoint-level error cache from the current test results.
+    /// </summary>
+    public void RefreshFlattenedFields()
+    {
+        _validationErrors = AggregateValidationErrors(TestResults);
+    }
+
+    private static List<ValidationError> AggregateValidationErrors(IEnumerable<HttpTestResult> testResults)
+    {
+        return testResults
+            .Where(tr => tr.ValidationResult != null)
+            .SelectMany(tr => tr.ValidationResult!.Errors)
+            .GroupBy(e => $"{e.Path}|{e.ErrorCode}|{e.Message}|{e.Severity}", StringComparer.Ordinal)
+            .Select(g => g.First())
+            .ToList();
+    }
 
 }

@@ -7,7 +7,7 @@ namespace OpenReferralApi.Core.Models;
 /// Configuration options for controlling OpenAPI validation and endpoint testing behavior
 /// Allows fine-tuning of validation processes and testing parameters
 /// </summary>
-public class OpenApiValidationOptions
+public class OpenApiValidationOptions : ValidationOptionsBase
 {
     /// <summary>
     /// Whether to perform live endpoint testing against the API server
@@ -24,26 +24,6 @@ public class OpenApiValidationOptions
     /// </summary>
     [JsonProperty("validateSpecification")]
     public bool ValidateSpecification { get; set; } = true;
-
-    /// <summary>
-    /// Maximum time in seconds to wait for each HTTP request during endpoint testing
-    /// Prevents tests from hanging on slow or unresponsive endpoints
-    /// Higher values allow for slower APIs but increase total validation time
-    /// </summary>
-    [DefaultValue(30)]
-    [JsonProperty("timeoutSeconds")]
-    public int TimeoutSeconds { get; set; } = 30;
-
-    /// <summary>
-    /// Maximum number of HTTP requests to execute simultaneously during endpoint testing
-    /// Higher values speed up testing but may overwhelm the target API
-    /// Consider the API's rate limits and server capacity when setting this value
-    /// </summary>
-    [DefaultValue(5)]
-    [JsonProperty("maxConcurrentRequests")]
-    public int MaxConcurrentRequests { get; set; } = 5;
-
-
 
     /// <summary>
     /// Whether to test optional endpoints that are marked as optional in the OpenAPI specification
@@ -84,12 +64,4 @@ public class OpenApiValidationOptions
     public bool IncludeTestResults { get; set; } = true;
 
     /// <summary>
-    /// Whether to report fields in endpoint responses that are not defined in the schema.
-    /// When true, validates response data against the schema and reports any fields that exist in the response
-    /// but are not defined in the schema as informational messages.
-    /// When false (default), only standard schema validation is performed.
-    /// Useful for identifying undocumented fields, schema drift, or incomplete specifications.
-    /// </summary>
-    [JsonProperty("reportAdditionalFields")]
-    public bool ReportAdditionalFields { get; set; } = false;
 }

@@ -5,14 +5,14 @@ namespace OpenReferralApi.Core.Services;
 /// <summary>
 /// Maps OpenAPI validation results to the standard ValidationResponse format
 /// </summary>
-public interface IOpenApiToValidationResponseMapper
+public interface IOpenReferralUKValidationResponseMapper
 {
-    OpenReferralUKValidationResponse MapToValidationResponse(OpenApiValidationResult openApiResult);
+    OpenReferralUKValidationResponse MapToOpenReferralUKValidationResponse(OpenApiValidationResult openApiResult);
 }
 
-public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMapper
+public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationResponseMapper
 {
-    public OpenReferralUKValidationResponse MapToValidationResponse(OpenApiValidationResult openApiResult)
+    public OpenReferralUKValidationResponse MapToOpenReferralUKValidationResponse(OpenApiValidationResult openApiResult)
     {
         var testSuites = new List<object>();
 
@@ -24,17 +24,17 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
 
             if (requiredEndpoints.Any())
             {
-                testSuites.Add(MapEndpointTests(requiredEndpoints, openApiResult?.Metadata?.BaseUrl ?? "", 
-                    "Level 1 Compliance - Basic checks", 
-                    "Will validate the required basic endpoints. Validation will fail if it does not pass all these checks.", 
+                testSuites.Add(MapEndpointTests(requiredEndpoints, openApiResult?.Metadata?.BaseUrl ?? "",
+                    "Level 1 Compliance - Basic checks",
+                    "Will validate the required basic endpoints. Validation will fail if it does not pass all these checks.",
                     true));
             }
 
             if (optionalEndpoints.Any())
             {
-                testSuites.Add(MapEndpointTests(optionalEndpoints, openApiResult?.Metadata?.BaseUrl ?? "", 
-                    "Level 2 Compliance - Extended checks", 
-                    "Will validate all other endpoints. Validation will not fail if it does not pass all these checks.", 
+                testSuites.Add(MapEndpointTests(optionalEndpoints, openApiResult?.Metadata?.BaseUrl ?? "",
+                    "Level 2 Compliance - Extended checks",
+                    "Will validate all other endpoints. Validation will not fail if it does not pass all these checks.",
                     false));
             }
         }
@@ -56,13 +56,13 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
         };
     }
 
-    private object MapEndpointTests(List<EndpointTestResult> endpointTests, string baseUrl, 
+    private object MapEndpointTests(List<EndpointTestResult> endpointTests, string baseUrl,
         string name, string description, bool required)
     {
-        var tests = endpointTests.Select(endpoint => 
+        var tests = endpointTests.Select(endpoint =>
         {
             var testToUse = endpoint.PrimaryTestResult;
-            
+
             return new
             {
                 name = endpoint.Name ?? $"{endpoint.Method} {endpoint.Path}",
@@ -76,12 +76,12 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
 
         return new
         {
-            name = name,
-            description = description,
+            name,
+            description,
             messageLevel = required ? "error" : "warning",
-            required = required,
+            required,
             success = endpointTests.All(e => e.Status == EndpointTestStatus.PassedValidation || e.Status == EndpointTestStatus.PassedWithWarnings),
-            tests = tests
+            tests
         };
     }
 
@@ -94,12 +94,12 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
         var endpointErrors = endpoint.ValidationErrors;
 
         var testsToProcess = specificTest != null
-            ? new[] { specificTest }
+            ? [specificTest]
             : endpoint.TestResults.Where(tr => tr.ValidationResult != null && !tr.ValidationResult.IsValid);
-            
+
         // Track seen error paths to deduplicate errors across multiple test results
         var seenErrorPaths = new HashSet<string>(StringComparer.Ordinal);
-        
+
         if (specificTest == null && endpointErrors.Any())
         {
             foreach (var validationError in endpointErrors)

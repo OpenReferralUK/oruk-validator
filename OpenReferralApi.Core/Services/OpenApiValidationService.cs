@@ -26,14 +26,24 @@ public class OpenApiValidationService : IOpenApiValidationService
     private readonly IJsonValidatorService _jsonValidatorService;
     private readonly ISchemaResolverService _schemaResolverService;
     private readonly IOpenApiDiscoveryService _discoveryService;
+    private readonly OpenApiSpecFetcher _specFetcher;
+    private readonly bool _allowUserSuppliedAuth;
 
-    public OpenApiValidationService(ILogger<OpenApiValidationService> logger, HttpClient httpClient, IJsonValidatorService jsonValidatorService, ISchemaResolverService schemaResolverService, IOpenApiDiscoveryService discoveryService)
+    public OpenApiValidationService(
+        ILogger<OpenApiValidationService> logger,
+        HttpClient httpClient,
+        IJsonValidatorService jsonValidatorService,
+        ISchemaResolverService schemaResolverService,
+        IOpenApiDiscoveryService discoveryService,
+        bool allowUserSuppliedAuth = false)
     {
         _logger = logger;
         _httpClient = httpClient;
         _jsonValidatorService = jsonValidatorService;
         _schemaResolverService = schemaResolverService;
         _discoveryService = discoveryService;
+        _allowUserSuppliedAuth = allowUserSuppliedAuth;
+        _specFetcher = new OpenApiSpecFetcher(httpClient, logger, schemaResolverService, allowUserSuppliedAuth: _allowUserSuppliedAuth);
     }
 
     public async Task<OpenApiValidationResult> ValidateOpenApiSpecificationAsync(OpenApiValidationRequest request, CancellationToken cancellationToken = default)
@@ -77,10 +87,21 @@ public class OpenApiValidationService : IOpenApiValidationService
             bool isResolved = false;
             if (!string.IsNullOrEmpty(request.OpenApiSchema?.Url))
             {
+                // If user-supplied authentication is not allowed by server configuration,
+                // ignore any authentication details provided in the request to avoid
+                // user-controlled bypass of authentication policy.
+                var effectiveAuth = _allowUserSuppliedAuth
+                    ? request.OpenApiSchema.Authentication
+                    : null;
+
                 // Fetch OpenAPI spec but defer resolution until we know we need it
                 // This avoids expensive resolution when we're only validating spec structure
                 // or when most endpoints won't be tested
-                openApiSpec = await FetchOpenApiSpecFromUrlAsync(request.OpenApiSchema.Url, request.OpenApiSchema.Authentication, cancellationToken, resolveReferences: false);
+                openApiSpec = await _specFetcher.FetchOpenApiSpecFromUrlAsync(
+                    request.OpenApiSchema.Url,
+                    effectiveAuth,
+                    cancellationToken,
+                    resolveReferences: false);
             }
             else
             {
@@ -114,11 +135,11 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // Build summary
-            result.Summary = BuildTestSummary(specValidation, endpointTests);
+            result.Summary = BuildTestSummary(specValidation, endpointTests, request.Options);
             result.IsValid = (specValidation?.IsValid ?? true) && result.Summary.FailedTests == 0;
 
             // Set metadata
-            result.Metadata = new OpenApiValidationMetadata
+            result.Metadata = new CommonValidationMetadata
             {
                 BaseUrl = request.BaseUrl,
                 TestTimestamp = DateTime.UtcNow,
@@ -148,6 +169,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             {
                 foreach (var ep in result.EndpointTests)
                 {
+                    ep.RefreshFlattenedFields();
                     ep.TestResults.Clear();
                 }
             }
@@ -1300,96 +1322,19 @@ public class OpenApiValidationService : IOpenApiValidationService
         return validated;
     }
 
-    private async Task<JObject> FetchOpenApiSpecFromUrlAsync(string specUrl, DataSourceAuthentication? auth, CancellationToken cancellationToken, bool resolveReferences = true)
+    private OpenApiValidationSummary BuildTestSummary(OpenApiSpecificationValidation? specValidation, List<EndpointTestResult> endpointTests, OpenApiValidationOptions options)
     {
-        try
-        {
-            var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
-            _logger.LogInformation("Fetching OpenAPI specification from URL: {SpecUrl}", safeSpecUrl);
+        var shouldIgnoreOptionalFailures = options.TestOptionalEndpoints && options.TreatOptionalEndpointsAsWarnings;
+        var failedTests = endpointTests.Count(e =>
+            (e.Status == EndpointTestStatus.FailedValidation || e.Status == EndpointTestStatus.Error) &&
+            !(shouldIgnoreOptionalFailures && e.IsOptional));
 
-            if (!Uri.IsWellFormedUriString(specUrl, UriKind.Absolute))
-            {
-                throw new ArgumentException($"Invalid OpenAPI spec URL: {safeSpecUrl}");
-            }
-
-            using var request = new HttpRequestMessage(HttpMethod.Get, specUrl);
-
-            // Apply authentication only if it passes strict validation
-            var validatedAuth = ValidateAuthentication(auth);
-            if (validatedAuth != null)
-            {
-                ApplyAuthentication(request, validatedAuth);
-            }
-
-            var response = await _httpClient.SendAsync(request, cancellationToken);
-            response.EnsureSuccessStatusCode();
-
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            // Only resolve references if requested (lazy evaluation)
-            // This avoids expensive resolution when we're only validating spec structure
-            // or when endpoints won't be tested
-            if (resolveReferences)
-            {
-                var resolvedContent = await _schemaResolverService.ResolveAsync(content, specUrl, validatedAuth);
-                return JObject.Parse(resolvedContent);
-            }
-
-            // Return unresolved document for spec validation or later lazy resolution
-            return JObject.Parse(content);
-        }
-        catch (Exception ex)
-        {
-            var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
-            _logger.LogError(ex, "Failed to fetch OpenAPI specification from URL: {SpecUrl}", safeSpecUrl);
-            throw new InvalidOperationException($"Failed to fetch OpenAPI specification from URL: {safeSpecUrl}", ex);
-        }
-    }
-
-    private void ApplyAuthentication(HttpRequestMessage request, DataSourceAuthentication auth)
-    {
-        // Apply API Key authentication
-        if (!string.IsNullOrEmpty(auth.ApiKey))
-        {
-            request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
-            _logger.LogDebug("Applied API Key authentication with header: {Header}", SanitizeForLogging(auth.ApiKeyHeader));
-        }
-
-        // Apply Bearer Token authentication
-        if (!string.IsNullOrEmpty(auth.BearerToken))
-        {
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.BearerToken);
-            _logger.LogDebug("Applied Bearer Token authentication");
-        }
-
-        // Apply Basic authentication
-        if (auth.BasicAuth != null && !string.IsNullOrEmpty(auth.BasicAuth.Username))
-        {
-            var credentials = Convert.ToBase64String(
-                Encoding.ASCII.GetBytes($"{auth.BasicAuth.Username}:{auth.BasicAuth.Password}"));
-            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-            _logger.LogDebug("Applied Basic authentication for user: {Username}", SanitizeForLogging(auth.BasicAuth.Username));
-        }
-
-        // Apply custom headers
-        if (auth.CustomHeaders != null)
-        {
-            foreach (var header in auth.CustomHeaders)
-            {
-                request.Headers.Add(header.Key, header.Value);
-                _logger.LogDebug("Applied custom header: {HeaderName}", SanitizeForLogging(header.Key));
-            }
-        }
-    }
-
-    private OpenApiValidationSummary BuildTestSummary(OpenApiSpecificationValidation? specValidation, List<EndpointTestResult> endpointTests)
-    {
         var summary = new OpenApiValidationSummary
         {
             TotalEndpoints = endpointTests.Count,
             TestedEndpoints = endpointTests.Count(e => e.IsTested),
             SuccessfulTests = endpointTests.Count(e => e.Status == EndpointTestStatus.PassedValidation),
-            FailedTests = endpointTests.Count(e => e.Status == EndpointTestStatus.FailedValidation || e.Status == EndpointTestStatus.Error),
+            FailedTests = failedTests,
             SkippedTests = endpointTests.Count(e => e.Status == EndpointTestStatus.NotTested || e.Status == EndpointTestStatus.Skipped),
             TotalRequests = endpointTests.Sum(e => e.TestResults.Count),
             SpecificationValid = specValidation?.IsValid ?? true
@@ -2638,7 +2583,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     /// </summary>
     /// <param name="request">The HTTP request message to apply authentication to</param>
     /// <param name="authentication">The authentication configuration containing credentials and auth type</param>
-    private void ApplyAuthenticationHeaders(HttpRequestMessage request, DataSourceAuthentication authentication)
+    private void ApplyAuthenticationHeaders(HttpRequestMessage request, IAuthenticationConfig authentication)
     {
         // Apply API Key authentication
         if (!string.IsNullOrEmpty(authentication.ApiKey))

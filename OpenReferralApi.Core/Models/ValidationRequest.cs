@@ -21,7 +21,7 @@ public class ValidationRequest
     public ValidationOptions? Options { get; set; }
 }
 
-public class ValidationOptions
+public class ValidationOptions : ValidationOptionsBase
 {
     [JsonProperty("strictMode")]
     public bool StrictMode { get; set; } = false;
@@ -34,14 +34,6 @@ public class ValidationOptions
 
     [JsonProperty("maxErrors")]
     public int MaxErrors { get; set; } = 100;
-
-    [DefaultValue(30)]
-    [JsonProperty("timeoutSeconds")]
-    public int TimeoutSeconds { get; set; } = 30;
-
-    [DefaultValue(5)]
-    [JsonProperty("maxConcurrentRequests")]
-    public int MaxConcurrentRequests { get; set; } = 5;
 
     [JsonProperty("useThrottling")]
     public bool UseThrottling { get; set; } = true;
@@ -66,8 +58,6 @@ public class ValidationOptions
 
     [JsonProperty("validateSslCertificate")]
     public bool ValidateSslCertificate { get; set; } = true;
-    [JsonProperty("reportAdditionalFields")]
-    public bool ReportAdditionalFields { get; set; } = false;
 
 }
 
