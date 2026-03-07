@@ -168,6 +168,7 @@ builder.Services.AddSingleton<IRequestProcessingService, RequestProcessingServic
 builder.Services.AddScoped<ISchemaResolverService, SchemaResolverService>();
 
 builder.Services.AddScoped<IJsonValidatorService, JsonValidatorService>();
+var allowUserSuppliedAuth = builder.Configuration.GetValue<bool>("Authentication:AllowUserSuppliedAuth", false);
 builder.Services.AddScoped<IOpenApiValidationService>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<OpenApiValidationService>>();
@@ -176,7 +177,13 @@ builder.Services.AddScoped<IOpenApiValidationService>(provider =>
     var jsonValidatorService = provider.GetRequiredService<IJsonValidatorService>();
     var schemaResolverService = provider.GetRequiredService<ISchemaResolverService>();
     var discoveryService = provider.GetRequiredService<IOpenApiDiscoveryService>();
-    return new OpenApiValidationService(logger, httpClient, jsonValidatorService, schemaResolverService, discoveryService);
+    return new OpenApiValidationService(
+        logger,
+        httpClient,
+        jsonValidatorService,
+        schemaResolverService,
+        discoveryService,
+        allowUserSuppliedAuth: allowUserSuppliedAuth);
 });
 
 builder.Services.AddScoped<IOpenApiDiscoveryService, OpenApiDiscoveryService>();

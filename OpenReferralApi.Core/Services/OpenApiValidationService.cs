@@ -85,20 +85,24 @@ public class OpenApiValidationService : IOpenApiValidationService
             // Get OpenAPI specification
             JObject openApiSpec;
             bool isResolved = false;
+
+            // User-supplied authentication for schema and datasource requests is feature-gated.
+            // This allows controlled enablement via environment configuration.
+            var schemaRequestAuth = _allowUserSuppliedAuth ? request.OpenApiSchema?.Authentication : null;
+            var dataSourceRequestAuth = _allowUserSuppliedAuth ? request.DataSourceAuth : null;
+            if (!_allowUserSuppliedAuth && (request.OpenApiSchema?.Authentication != null || request.DataSourceAuth != null))
+            {
+                _logger.LogWarning("User-supplied authentication was provided but is disabled by server configuration");
+            }
+
             if (!string.IsNullOrEmpty(request.OpenApiSchema?.Url))
             {
-                // Always ignore authentication details provided in the request body to ensure that
-                // user-controlled data cannot influence whether or how authentication is applied
-                // when fetching the OpenAPI specification. Any authentication used here must come
-                // from trusted, server-side configuration.
-                DataSourceAuthentication? effectiveAuth = null;
-
                 // Fetch OpenAPI spec but defer resolution until we know we need it
                 // This avoids expensive resolution when we're only validating spec structure
                 // or when most endpoints won't be tested
                 openApiSpec = await _specFetcher.FetchOpenApiSpecFromUrlAsync(
                     request.OpenApiSchema.Url,
-                    effectiveAuth,
+                    schemaRequestAuth,
                     cancellationToken,
                     resolveReferences: false);
             }
@@ -124,12 +128,12 @@ public class OpenApiValidationService : IOpenApiValidationService
                 if (!isResolved)
                 {
                     _logger.LogDebug("Resolving OpenAPI document references for endpoint testing");
-                    var resolvedContent = await _schemaResolverService.ResolveAsync(openApiSpec.ToString(), request.OpenApiSchema?.Url, request.OpenApiSchema?.Authentication);
+                    var resolvedContent = await _schemaResolverService.ResolveAsync(openApiSpec.ToString(), request.OpenApiSchema?.Url, schemaRequestAuth);
                     openApiSpec = JObject.Parse(resolvedContent);
                     isResolved = true;
                 }
 
-                endpointTests = await TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, request.DataSourceAuth, request.OpenApiSchema?.Url, cancellationToken);
+                endpointTests = await TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, dataSourceRequestAuth, request.OpenApiSchema?.Url, cancellationToken);
                 result.EndpointTests = endpointTests;
             }
 
