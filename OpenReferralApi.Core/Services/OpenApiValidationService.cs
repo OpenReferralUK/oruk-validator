@@ -87,14 +87,10 @@ public class OpenApiValidationService : IOpenApiValidationService
             JObject openApiSpec;
             bool isResolved = false;
 
-            // User-supplied authentication for schema and datasource requests is feature-gated.
-            // This allows controlled enablement via environment configuration.
-            var schemaRequestAuth = _allowUserSuppliedAuth ? request.OpenApiSchema?.Authentication : null;
-            var dataSourceRequestAuth = _allowUserSuppliedAuth ? request.DataSourceAuth : null;
-            if (!_allowUserSuppliedAuth && (request.OpenApiSchema?.Authentication != null || request.DataSourceAuth != null))
-            {
-                _logger.LogWarning("User-supplied authentication was provided but is disabled by server configuration");
-            }
+            // User-supplied authentication for schema and datasource requests is feature-gated
+            // and must pass strict validation before it can be applied.
+            var schemaRequestAuth = TryGetValidatedRequestAuthentication("schema", request.OpenApiSchema?.Authentication);
+            var dataSourceRequestAuth = TryGetValidatedRequestAuthentication("datasource", request.DataSourceAuth);
 
             if (!string.IsNullOrEmpty(request.OpenApiSchema?.Url))
             {
@@ -1268,6 +1264,32 @@ public class OpenApiValidationService : IOpenApiValidationService
         return sanitized;
     }
 
+    private DataSourceAuthentication? TryGetValidatedRequestAuthentication(string context, DataSourceAuthentication? auth)
+    {
+        if (auth == null)
+        {
+            return null;
+        }
+
+        if (!_allowUserSuppliedAuth)
+        {
+            _logger.LogWarning(
+                "User-supplied authentication was provided for {Context} but is disabled by server configuration",
+                SanitizeForLogging(context));
+            return null;
+        }
+
+        var validated = ValidateAuthentication(auth);
+        if (validated == null)
+        {
+            _logger.LogWarning(
+                "Rejected invalid user-supplied authentication for {Context}",
+                SanitizeForLogging(context));
+        }
+
+        return validated;
+    }
+
     private static DataSourceAuthentication? ValidateAuthentication(DataSourceAuthentication? auth)
     {
         if (auth == null)
@@ -1275,13 +1297,37 @@ public class OpenApiValidationService : IOpenApiValidationService
             return null;
         }
 
+        const int maxTokenLength = 4096;
+
+        static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        static bool IsTooLong(string? value, int maxLength) => !string.IsNullOrEmpty(value) && value.Length > maxLength;
+
         // Perform stricter validation on the authentication configuration.
         // If it fails validation, treat it as if no authentication was provided.
-        var hasApiKey = !string.IsNullOrWhiteSpace(auth.ApiKey);
-        var hasBearer = !string.IsNullOrWhiteSpace(auth.BearerToken);
+        var apiKey = Normalize(auth.ApiKey);
+        var apiKeyHeader = Normalize(auth.ApiKeyHeader) ?? "X-API-Key";
+        var bearerToken = Normalize(auth.BearerToken);
+        var basicUsername = Normalize(auth.BasicAuth?.Username);
+        var basicPassword = Normalize(auth.BasicAuth?.Password);
+
+        if (IsTooLong(apiKey, maxTokenLength) ||
+            IsTooLong(bearerToken, maxTokenLength) ||
+            IsTooLong(basicUsername, maxTokenLength) ||
+            IsTooLong(basicPassword, maxTokenLength))
+        {
+            return null;
+        }
+
+        var hasApiKey = !string.IsNullOrEmpty(apiKey);
+        if (hasApiKey && !IsValidHttpHeaderName(apiKeyHeader))
+        {
+            return null;
+        }
+
+        var hasBearer = !string.IsNullOrEmpty(bearerToken);
         var hasBasic = auth.BasicAuth != null
-                       && !string.IsNullOrWhiteSpace(auth.BasicAuth.Username)
-                       && !string.IsNullOrWhiteSpace(auth.BasicAuth.Password);
+                       && !string.IsNullOrEmpty(basicUsername)
+                       && !string.IsNullOrEmpty(basicPassword);
         var hasCustomHeaders = auth.CustomHeaders != null && auth.CustomHeaders.Count > 0;
 
         var mechanismsCount = 0;
@@ -1296,43 +1342,113 @@ public class OpenApiValidationService : IOpenApiValidationService
             return null;
         }
 
-        // Return a sanitised copy so that downstream code does not operate on the original user object.
+        // Return a sanitized copy so that downstream code does not operate on the original user object.
         var validated = new DataSourceAuthentication();
 
         if (hasApiKey)
         {
-            validated.ApiKey = auth.ApiKey!.Trim();
+            validated.ApiKey = apiKey;
+            validated.ApiKeyHeader = apiKeyHeader;
         }
         else if (hasBearer)
         {
-            validated.BearerToken = auth.BearerToken!.Trim();
+            validated.BearerToken = bearerToken;
         }
         else if (hasBasic)
         {
             validated.BasicAuth = new BasicAuthentication
             {
-                Username = auth.BasicAuth!.Username.Trim(),
-                Password = auth.BasicAuth.Password
+                Username = basicUsername!,
+                Password = basicPassword!
             };
         }
         else if (hasCustomHeaders)
         {
-            // Copy only non-empty header names and values.
+            // Copy only non-empty header names and values that pass header safety checks.
             validated.CustomHeaders = new Dictionary<string, string>();
             foreach (var kvp in auth.CustomHeaders!)
             {
-                if (!string.IsNullOrWhiteSpace(kvp.Key) && !string.IsNullOrWhiteSpace(kvp.Value))
+                var headerName = Normalize(kvp.Key);
+                var headerValue = Normalize(kvp.Value);
+
+                if (string.IsNullOrEmpty(headerName) ||
+                    string.IsNullOrEmpty(headerValue) ||
+                    !IsValidHttpHeaderName(headerName) ||
+                    !IsSafeHeaderValue(headerValue) ||
+                    IsTooLong(headerValue, maxTokenLength))
                 {
-                    validated.CustomHeaders[kvp.Key.Trim()] = kvp.Value;
+                    return null;
                 }
+
+                validated.CustomHeaders[headerName] = headerValue;
             }
+
             if (validated.CustomHeaders.Count == 0)
+            {
+                return null;
+            }
+
+            if (validated.CustomHeaders.Count > 20)
             {
                 return null;
             }
         }
 
+        // Ensure all outgoing header values are safe against CRLF/control character injection.
+        if ((validated.ApiKey != null && !IsSafeHeaderValue(validated.ApiKey)) ||
+            (validated.BearerToken != null && !IsSafeHeaderValue(validated.BearerToken)) ||
+            (validated.BasicAuth?.Username != null && !IsSafeHeaderValue(validated.BasicAuth.Username)) ||
+            (validated.BasicAuth?.Password != null && !IsSafeHeaderValue(validated.BasicAuth.Password)))
+        {
+            return null;
+        }
+
         return validated;
+    }
+
+    private static bool IsValidHttpHeaderName(string headerName)
+    {
+        if (string.IsNullOrWhiteSpace(headerName))
+        {
+            return false;
+        }
+
+        const string allowedHeaderTokenSymbols = "!#$%&'*+-.^_`|~";
+
+        foreach (var c in headerName)
+        {
+            if (char.IsLetterOrDigit(c))
+            {
+                continue;
+            }
+
+            if (allowedHeaderTokenSymbols.IndexOf(c) >= 0)
+            {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsSafeHeaderValue(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        foreach (var c in value)
+        {
+            if (c == '\r' || c == '\n' || char.IsControl(c))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private OpenApiValidationSummary BuildTestSummary(OpenApiSpecificationValidation? specValidation, List<EndpointTestResult> endpointTests, OpenApiValidationOptions options)
@@ -2602,15 +2718,29 @@ public class OpenApiValidationService : IOpenApiValidationService
         if (!string.IsNullOrEmpty(authentication.ApiKey))
         {
             var headerName = string.IsNullOrEmpty(authentication.ApiKeyHeader) ? "X-API-Key" : authentication.ApiKeyHeader;
-            request.Headers.Add(headerName, authentication.ApiKey);
-            _logger.LogDebug("Applied API Key authentication with header: {HeaderName}", SanitizeForLogging(headerName));
+            if (IsValidHttpHeaderName(headerName) && IsSafeHeaderValue(authentication.ApiKey))
+            {
+                request.Headers.Add(headerName, authentication.ApiKey);
+                _logger.LogDebug("Applied API Key authentication with header: {HeaderName}", SanitizeForLogging(headerName));
+            }
+            else
+            {
+                _logger.LogWarning("Skipped API Key authentication due to invalid header name or value");
+            }
         }
 
         // Apply Bearer Token authentication
         if (!string.IsNullOrEmpty(authentication.BearerToken))
         {
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authentication.BearerToken);
-            _logger.LogDebug("Applied Bearer Token authentication");
+            if (IsSafeHeaderValue(authentication.BearerToken))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authentication.BearerToken);
+                _logger.LogDebug("Applied Bearer Token authentication");
+            }
+            else
+            {
+                _logger.LogWarning("Skipped Bearer Token authentication due to invalid token value");
+            }
         }
 
         // Apply Basic Authentication
@@ -2628,10 +2758,17 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             foreach (var header in authentication.CustomHeaders)
             {
-                if (!string.IsNullOrEmpty(header.Key) && !string.IsNullOrEmpty(header.Value))
+                if (!string.IsNullOrEmpty(header.Key) &&
+                    !string.IsNullOrEmpty(header.Value) &&
+                    IsValidHttpHeaderName(header.Key) &&
+                    IsSafeHeaderValue(header.Value))
                 {
                     request.Headers.Add(header.Key, header.Value);
                     _logger.LogDebug("Applied custom header: {HeaderName}", SanitizeForLogging(header.Key));
+                }
+                else
+                {
+                    _logger.LogWarning("Skipped invalid custom header");
                 }
             }
         }
