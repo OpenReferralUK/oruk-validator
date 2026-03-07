@@ -27,15 +27,23 @@ public class OpenApiValidationService : IOpenApiValidationService
     private readonly ISchemaResolverService _schemaResolverService;
     private readonly IOpenApiDiscoveryService _discoveryService;
     private readonly OpenApiSpecFetcher _specFetcher;
+    private readonly bool _allowUserSuppliedAuth;
 
-    public OpenApiValidationService(ILogger<OpenApiValidationService> logger, HttpClient httpClient, IJsonValidatorService jsonValidatorService, ISchemaResolverService schemaResolverService, IOpenApiDiscoveryService discoveryService)
+    public OpenApiValidationService(
+        ILogger<OpenApiValidationService> logger,
+        HttpClient httpClient,
+        IJsonValidatorService jsonValidatorService,
+        ISchemaResolverService schemaResolverService,
+        IOpenApiDiscoveryService discoveryService,
+        bool allowUserSuppliedAuth = false)
     {
         _logger = logger;
         _httpClient = httpClient;
         _jsonValidatorService = jsonValidatorService;
         _schemaResolverService = schemaResolverService;
         _discoveryService = discoveryService;
-        _specFetcher = new OpenApiSpecFetcher(httpClient, logger, schemaResolverService);
+        _allowUserSuppliedAuth = allowUserSuppliedAuth;
+        _specFetcher = new OpenApiSpecFetcher(httpClient, logger, schemaResolverService, allowUserSuppliedAuth: _allowUserSuppliedAuth);
     }
 
     public async Task<OpenApiValidationResult> ValidateOpenApiSpecificationAsync(OpenApiValidationRequest request, CancellationToken cancellationToken = default)
@@ -79,10 +87,21 @@ public class OpenApiValidationService : IOpenApiValidationService
             bool isResolved = false;
             if (!string.IsNullOrEmpty(request.OpenApiSchema?.Url))
             {
+                // If user-supplied authentication is not allowed by server configuration,
+                // ignore any authentication details provided in the request to avoid
+                // user-controlled bypass of authentication policy.
+                var effectiveAuth = _allowUserSuppliedAuth
+                    ? request.OpenApiSchema.Authentication
+                    : null;
+
                 // Fetch OpenAPI spec but defer resolution until we know we need it
                 // This avoids expensive resolution when we're only validating spec structure
                 // or when most endpoints won't be tested
-                openApiSpec = await _specFetcher.FetchOpenApiSpecFromUrlAsync(request.OpenApiSchema.Url, request.OpenApiSchema.Authentication, cancellationToken, resolveReferences: false);
+                openApiSpec = await _specFetcher.FetchOpenApiSpecFromUrlAsync(
+                    request.OpenApiSchema.Url,
+                    effectiveAuth,
+                    cancellationToken,
+                    resolveReferences: false);
             }
             else
             {
