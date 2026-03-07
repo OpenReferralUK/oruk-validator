@@ -1280,13 +1280,8 @@ public class OpenApiValidationService : IOpenApiValidationService
             return null;
         }
 
-        if (auth == null)
-        {
-            return null;
-        }
-
         var validated = ValidateAuthentication(auth);
-        if (validated == null)
+        if (validated == null && auth != null)
         {
             _logger.LogWarning(
                 "Rejected invalid user-supplied authentication for {Context}",
