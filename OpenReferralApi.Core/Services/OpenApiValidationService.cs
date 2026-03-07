@@ -1007,10 +1007,19 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             using var request = new HttpRequestMessage(new HttpMethod(method), url);
 
-            // Apply authentication if provided
-            if (authentication != null)
+            // Apply request-supplied authentication only for HTTPS endpoints.
+            // Never send user-provided credentials over plain HTTP.
+            if (authentication != null &&
+                Uri.TryCreate(url, UriKind.Absolute, out var requestUri) &&
+                string.Equals(requestUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
             {
                 ApplyAuthenticationHeaders(request, authentication);
+            }
+            else if (authentication != null)
+            {
+                _logger.LogWarning(
+                    "User-supplied data source authentication was provided for a non-HTTPS endpoint. Skipping auth headers for {Url}",
+                    SanitizeForLogging(url));
             }
 
             // Set timeout
