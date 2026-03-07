@@ -65,29 +65,39 @@ internal class OpenApiSpecFetcher
             var uri = new Uri(specUrl);
             var isHttps = string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
 
-            if (_allowUserSuppliedAuth && auth != null)
-            {
-                if (!isHttps)
-                {
-                    _logger.LogError(
-                        "Refusing to send authentication credentials over a non-HTTPS connection to {SpecUrl}",
-                        safeSpecUrl);
-                    throw new InvalidOperationException(
-                        $"Authentication credentials may only be used with HTTPS endpoints. URL: {safeSpecUrl}");
-                }
+            // Server-side policy: only consider applying authentication if the feature is enabled.
+            var shouldApplyAuth = _allowUserSuppliedAuth && isHttps;
 
-                validatedAuth = ValidateAuthentication(auth);
-                if (validatedAuth != null)
-                {
-                    ApplyAuthentication(request, validatedAuth);
-                }
-            }
-            else if (auth != null)
+            if (auth != null)
             {
-                _logger.LogWarning(
-                    "User-supplied authentication was provided but is disabled by server configuration. " +
-                    "Skipping authentication headers for request to {SpecUrl}",
-                    safeSpecUrl);
+                if (!shouldApplyAuth)
+                {
+                    // Either user-supplied auth is disabled by configuration or the URL is not HTTPS.
+                    if (!_allowUserSuppliedAuth)
+                    {
+                        _logger.LogWarning(
+                            "User-supplied authentication was provided but is disabled by server configuration. " +
+                            "Skipping authentication headers for request to {SpecUrl}",
+                            safeSpecUrl);
+                    }
+                    else
+                    {
+                        _logger.LogError(
+                            "Refusing to send authentication credentials over a non-HTTPS connection to {SpecUrl}",
+                            safeSpecUrl);
+                        throw new InvalidOperationException(
+                            $"Authentication credentials may only be used with HTTPS endpoints. URL: {safeSpecUrl}");
+                    }
+                }
+                else
+                {
+                    // Only validated authentication information is used to guard sensitive operations.
+                    validatedAuth = ValidateAuthentication(auth);
+                    if (validatedAuth != null)
+                    {
+                        ApplyAuthentication(request, validatedAuth);
+                    }
+                }
             }
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
