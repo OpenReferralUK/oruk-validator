@@ -1647,6 +1647,59 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithHttpBaseUrl_DoesNotApplyDataSourceAuthHeaders()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        HttpRequestMessage? capturedDataSourceRequest = null;
+
+        SetupHttpMock((req, ct) =>
+        {
+            var requestUri = req.RequestUri?.ToString() ?? string.Empty;
+            if (!requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase))
+            {
+                capturedDataSourceRequest = req;
+            }
+
+            var responseBody = requestUri.Contains("openapi", StringComparison.OrdinalIgnoreCase)
+                ? json
+                : "{}";
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody)
+            };
+        });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            BaseUrl = "http://api.example.com",
+            DataSourceAuth = new DataSourceAuthentication
+            {
+                ApiKey = "do-not-send-over-http"
+            },
+            Options = new OpenApiValidationOptions
+            {
+                TestEndpoints = true
+            }
+        };
+
+        // Act
+        await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(capturedDataSourceRequest, Is.Not.Null);
+        Assert.That(capturedDataSourceRequest!.RequestUri, Is.Not.Null);
+        Assert.That(capturedDataSourceRequest.RequestUri!.Scheme, Is.EqualTo(Uri.UriSchemeHttp));
+        Assert.That(capturedDataSourceRequest.Headers.Contains("X-API-Key"), Is.False);
+        Assert.That(capturedDataSourceRequest.Headers.Authorization, Is.Null);
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_WhenUserSuppliedAuthEnabled_AppliesAuthToSchemaAndDatasourceRequests()
     {
         // Arrange
