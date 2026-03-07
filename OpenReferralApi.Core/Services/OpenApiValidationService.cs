@@ -35,7 +35,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         _jsonValidatorService = jsonValidatorService;
         _schemaResolverService = schemaResolverService;
         _discoveryService = discoveryService;
-        _specFetcher = new OpenApiSpecFetcher(httpClient, logger, schemaResolverService);
+        _specFetcher = new OpenApiSpecFetcher(httpClient, logger, schemaResolverService, allowUserSuppliedAuth: true);
     }
 
     public async Task<OpenApiValidationResult> ValidateOpenApiSpecificationAsync(OpenApiValidationRequest request, CancellationToken cancellationToken = default)
