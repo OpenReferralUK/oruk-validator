@@ -52,7 +52,8 @@ public class OpenApiToValidationResponseMapper : IOpenApiToValidationResponseMap
                 Profile = $"{openApiResult?.SpecificationValidation?.Version ?? "Unknown"}",
                 ProfileReason = openApiResult?.Metadata?.ProfileReason ?? "Unknown"
             },
-            TestSuites = testSuites
+            TestSuites = testSuites,
+            Notifications = openApiResult?.Notifications?.ToList() ?? new List<string>()
         };
     }
 

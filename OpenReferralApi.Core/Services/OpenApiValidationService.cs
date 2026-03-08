@@ -179,6 +179,17 @@ public class OpenApiValidationService : IOpenApiValidationService
             _logger.LogError(ex, "Error during OpenAPI testing");
             result.IsValid = false;
             result.Summary = new OpenApiValidationSummary();
+
+            if (IsSpecFetchOrResolveFailure(ex))
+            {
+                var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(request.OpenApiSchema?.Url ?? string.Empty);
+                var rootMessage = SanitizeExceptionMessage(GetInnermostException(ex).Message);
+                var notification = string.IsNullOrEmpty(safeSpecUrl)
+                    ? $"Unable to get or resolve the OpenAPI specification. {rootMessage}"
+                    : $"Unable to get or resolve the OpenAPI specification from {safeSpecUrl}. {rootMessage}";
+
+                result.Notifications.Add(notification);
+            }
         }
         finally
         {
@@ -1262,6 +1273,41 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         return sanitized;
+    }
+
+    private static Exception GetInnermostException(Exception exception)
+    {
+        var current = exception;
+        while (current.InnerException != null)
+        {
+            current = current.InnerException;
+        }
+
+        return current;
+    }
+
+    private static bool IsSpecFetchOrResolveFailure(Exception ex)
+    {
+        var current = ex;
+        while (current != null)
+        {
+            if (current is HttpRequestException)
+            {
+                return true;
+            }
+
+            var message = current.Message ?? string.Empty;
+            if (message.Contains("Failed to fetch OpenAPI specification", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("resolve", StringComparison.OrdinalIgnoreCase) &&
+                message.Contains("reference", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            current = current.InnerException;
+        }
+
+        return false;
     }
 
     private DataSourceAuthentication? TryGetValidatedRequestAuthentication(string context, DataSourceAuthentication? auth)

@@ -56,6 +56,43 @@ public class OpenApiControllerTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenValidationReturnsNotifications_IncludesNotificationsInResponse()
+    {
+        // Arrange
+        var request = new OpenApiValidationRequest
+        {
+            BaseUrl = "https://api.example.com",
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://api.example.com/openapi.json"
+            }
+        };
+
+        var expectedNotification = "Unable to get or resolve the OpenAPI specification from https://api.example.com/openapi.json. 404";
+        var validationResult = new OpenApiValidationResult
+        {
+            IsValid = false,
+            Notifications = new List<string> { expectedNotification }
+        };
+
+        _validationServiceMock
+            .Setup(x => x.ValidateOpenApiSpecificationAsync(It.IsAny<OpenApiValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(validationResult);
+
+        // Act
+        var actionResult = await _controller.ValidateAsync(request);
+
+        // Assert
+        Assert.That(actionResult.Result, Is.TypeOf<OkObjectResult>());
+        var ok = (OkObjectResult)actionResult.Result!;
+        Assert.That(ok.Value, Is.TypeOf<OpenApiValidationResult>());
+
+        var response = (OpenApiValidationResult)ok.Value!;
+        Assert.That(response.Notifications, Has.Count.EqualTo(1));
+        Assert.That(response.Notifications[0], Is.EqualTo(expectedNotification));
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_WithMissingBaseUrl_ReturnsBadRequest()
     {
         // Arrange

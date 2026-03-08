@@ -49,6 +49,13 @@ public class OpenApiValidationResult
     public TimeSpan Duration { get; set; }
 
     /// <summary>
+    /// User-facing notifications about non-validation failures encountered during processing.
+    /// Includes issues such as failing to fetch or resolve the OpenAPI specification.
+    /// </summary>
+    [JsonProperty("notifications")]
+    public List<string> Notifications { get; set; } = new();
+
+    /// <summary>
     /// Additional metadata about the validation process and environment
     /// Includes timestamps, API information, testing configuration, and version details
     /// Helpful for audit trails, debugging, and result correlation
