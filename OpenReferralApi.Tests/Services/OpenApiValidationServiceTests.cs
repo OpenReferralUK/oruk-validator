@@ -426,6 +426,9 @@ public class OpenApiValidationServiceTests
             Assert.That(result.IsValid, Is.False);
             Assert.That(result.Summary, Is.Not.Null);
             Assert.That(result.Metadata, Is.Null);
+            Assert.That(result.Notifications, Has.Count.EqualTo(1));
+            Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
+            Assert.That(result.Notifications[0], Does.Contain("https://example.com/notfound.json"));
         }
         finally
         {
@@ -463,6 +466,9 @@ public class OpenApiValidationServiceTests
             Assert.That(result.IsValid, Is.False);
             Assert.That(result.Summary, Is.Not.Null);
             Assert.That(result.Metadata, Is.Null);
+            Assert.That(result.Notifications, Has.Count.EqualTo(1));
+            Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
+            Assert.That(result.Notifications[0], Does.Contain("https://invalid.example.com/openapi.json"));
         }
         finally
         {
@@ -503,6 +509,9 @@ public class OpenApiValidationServiceTests
             Assert.That(result.IsValid, Is.False);
             Assert.That(result.Summary, Is.Not.Null);
             Assert.That(result.Metadata, Is.Null);
+            Assert.That(result.Notifications, Has.Count.EqualTo(1));
+            Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
+            Assert.That(result.Notifications[0], Does.Contain("https://example.com/invalid.json"));
         }
         finally
         {

@@ -18,6 +18,12 @@ public class OpenReferralUKValidationResponse
     /// </summary>
     [JsonProperty("testSuites")]
     public List<object> TestSuites { get; set; } = new();
+
+    /// <summary>
+    /// User-facing notifications about processing issues such as specification fetch/resolve failures
+    /// </summary>
+    [JsonProperty("notifications")]
+    public List<string> Notifications { get; set; } = new();
 }
 
 /// <summary>
