@@ -1014,6 +1014,13 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             using var request = new HttpRequestMessage(new HttpMethod(method), url);
 
+            // Add User-Agent header to match browser behavior
+            // Many servers reject requests without a User-Agent header
+            if (!request.Headers.Contains("User-Agent"))
+            {
+                request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+            }
+
             // Apply request-supplied authentication only for HTTPS endpoints.
             // Never send user-provided credentials over plain HTTP.
             if (authentication != null &&
