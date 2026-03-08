@@ -113,4 +113,25 @@ public class OpenReferralUKValidationResponseMapperTests
         var json = JObject.FromObject(response);
         Assert.That(json["service"]!["url"]!.ToString(), Is.EqualTo(""));
     }
+
+    [Test]
+    public void MapToValidationResponse_WithNotifications_MapsNotifications()
+    {
+        // Arrange
+        var result = new OpenApiValidationResult
+        {
+            IsValid = false,
+            Notifications = new List<string>
+            {
+                "Unable to get or resolve the OpenAPI specification from https://example.com/openapi.json. 404"
+            }
+        };
+
+        // Act
+        var response = _mapper.MapToOpenReferralUKValidationResponse(result);
+
+        // Assert
+        Assert.That(response.Notifications, Has.Count.EqualTo(1));
+        Assert.That(response.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
+    }
 }
