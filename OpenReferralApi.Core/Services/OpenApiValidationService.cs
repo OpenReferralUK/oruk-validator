@@ -179,6 +179,17 @@ public class OpenApiValidationService : IOpenApiValidationService
             _logger.LogError(ex, "Error during OpenAPI testing");
             result.IsValid = false;
             result.Summary = new OpenApiValidationSummary();
+
+            if (IsSpecFetchOrResolveFailure(ex))
+            {
+                var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(request.OpenApiSchema?.Url ?? string.Empty);
+                var rootMessage = SanitizeExceptionMessage(GetInnermostException(ex).Message);
+                var notification = string.IsNullOrEmpty(safeSpecUrl)
+                    ? $"Unable to get or resolve the OpenAPI specification. {rootMessage}"
+                    : $"Unable to get or resolve the OpenAPI specification from {safeSpecUrl}. {rootMessage}";
+
+                result.Notifications.Add(notification);
+            }
         }
         finally
         {
@@ -1003,6 +1014,13 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             using var request = new HttpRequestMessage(new HttpMethod(method), url);
 
+            // Add User-Agent header to match browser behavior
+            // Many servers reject requests without a User-Agent header
+            if (!request.Headers.Contains("User-Agent"))
+            {
+                request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+            }
+
             // Apply request-supplied authentication only for HTTPS endpoints.
             // Never send user-provided credentials over plain HTTP.
             if (authentication != null &&
@@ -1262,6 +1280,41 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         return sanitized;
+    }
+
+    private static Exception GetInnermostException(Exception exception)
+    {
+        var current = exception;
+        while (current.InnerException != null)
+        {
+            current = current.InnerException;
+        }
+
+        return current;
+    }
+
+    private static bool IsSpecFetchOrResolveFailure(Exception ex)
+    {
+        var current = ex;
+        while (current != null)
+        {
+            if (current is HttpRequestException)
+            {
+                return true;
+            }
+
+            var message = current.Message ?? string.Empty;
+            if (message.Contains("Failed to fetch OpenAPI specification", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("resolve", StringComparison.OrdinalIgnoreCase) &&
+                message.Contains("reference", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            current = current.InnerException;
+        }
+
+        return false;
     }
 
     private DataSourceAuthentication? TryGetValidatedRequestAuthentication(string context, DataSourceAuthentication? auth)
