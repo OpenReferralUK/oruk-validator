@@ -107,6 +107,85 @@ public class SchemaWarmupBackgroundServiceTests
         Assert.That(snapshot.LastFailureUrl, Is.EqualTo(failUrl));
     }
 
+    [Test]
+    public async Task ExecuteAsync_WithDuplicateUrls_DeduplicatesRequests()
+    {
+        var resolverMock = new Mock<ISchemaResolverService>();
+        resolverMock
+            .Setup(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), null))
+            .ReturnsAsync("{}");
+
+        using var serviceProvider = BuildServiceProvider(resolverMock.Object);
+        var statusTracker = new SchemaWarmupStatusTracker();
+        var logger = new Mock<ILogger<SchemaWarmupBackgroundService>>();
+
+        var canonicalUrl = "https://example.com/schema.json";
+
+        var service = new TestableSchemaWarmupBackgroundService(
+            serviceProvider,
+            Options.Create(new SchemaWarmupOptions
+            {
+                Enabled = true,
+                StartupDelaySeconds = 0,
+                Urls = new List<string>
+                {
+                    canonicalUrl,
+                    $" {canonicalUrl} ",
+                    "HTTPS://EXAMPLE.COM/SCHEMA.JSON"
+                }
+            }),
+            Options.Create(new CacheOptions { Enabled = true }),
+            statusTracker,
+            logger.Object);
+
+        await service.RunOnce(CancellationToken.None);
+
+        var snapshot = statusTracker.GetSnapshot();
+        Assert.That(snapshot.State, Is.EqualTo("completed"));
+        Assert.That(snapshot.ConfiguredUrlCount, Is.EqualTo(1));
+        Assert.That(snapshot.AttemptedCount, Is.EqualTo(1));
+        Assert.That(snapshot.SucceededCount, Is.EqualTo(1));
+
+        resolverMock.Verify(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), null), Times.Once);
+    }
+
+    [Test]
+    public async Task ExecuteAsync_WhenCancelledBeforeLoop_MarksCancelled()
+    {
+        var resolverMock = new Mock<ISchemaResolverService>();
+        resolverMock
+            .Setup(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), null))
+            .ReturnsAsync("{}");
+
+        using var serviceProvider = BuildServiceProvider(resolverMock.Object);
+        var statusTracker = new SchemaWarmupStatusTracker();
+        var logger = new Mock<ILogger<SchemaWarmupBackgroundService>>();
+
+        var service = new TestableSchemaWarmupBackgroundService(
+            serviceProvider,
+            Options.Create(new SchemaWarmupOptions
+            {
+                Enabled = true,
+                StartupDelaySeconds = 0,
+                Urls = new List<string> { "https://example.com/schema.json" }
+            }),
+            Options.Create(new CacheOptions { Enabled = true }),
+            statusTracker,
+            logger.Object);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await service.RunOnce(cts.Token);
+
+        var snapshot = statusTracker.GetSnapshot();
+        Assert.That(snapshot.State, Is.EqualTo("cancelled"));
+        Assert.That(snapshot.ConfiguredUrlCount, Is.EqualTo(1));
+        Assert.That(snapshot.AttemptedCount, Is.EqualTo(0));
+
+        resolverMock.Verify(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), null), Times.Never);
+    }
+
     private static ServiceProvider BuildServiceProvider(ISchemaResolverService resolver)
     {
         var services = new ServiceCollection();

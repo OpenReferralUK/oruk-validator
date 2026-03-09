@@ -347,3 +347,7 @@ app.Run();
 
 // Ensure logs are flushed on shutdown
 Log.CloseAndFlush();
+
+public partial class Program
+{
+}
