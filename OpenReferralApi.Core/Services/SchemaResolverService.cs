@@ -66,6 +66,7 @@ public class SchemaResolverService : ISchemaResolverService
   private readonly CacheOptions _cacheOptions;
   private readonly RemoteSchemaLoader _remoteSchemaLoader;
   private readonly ReferenceResolver _referenceResolver;
+  private readonly string? _localSpecificationBaseUrl;
 
   /// <summary>
   /// Initializes a new instance of the SchemaResolver for remote schema resolution.
@@ -74,17 +75,20 @@ public class SchemaResolverService : ISchemaResolverService
   /// <param name="logger">Logger instance.</param>
   /// <param name="memoryCache">Memory cache for persistent schema caching.</param>
   /// <param name="cacheOptions">Cache configuration options.</param>
+  /// <param name="specificationOptions">Specification configuration options for URL rewriting.</param>
   public SchemaResolverService(
     HttpClient httpClient,
     ILogger<SchemaResolverService> logger,
     IMemoryCache memoryCache,
-    IOptions<CacheOptions> cacheOptions)
+    IOptions<CacheOptions> cacheOptions,
+    IOptions<SpecificationOptions>? specificationOptions = null)
   {
     _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
     _cacheOptions = cacheOptions?.Value ?? throw new ArgumentNullException(nameof(cacheOptions));
-    _remoteSchemaLoader = new RemoteSchemaLoader(httpClient, logger, memoryCache, cacheOptions);
+    _localSpecificationBaseUrl = specificationOptions?.Value?.BaseUrl;
+    _remoteSchemaLoader = new RemoteSchemaLoader(httpClient, logger, memoryCache, cacheOptions, _localSpecificationBaseUrl);
     _referenceResolver = new ReferenceResolver(logger, _remoteSchemaLoader);
   }
 
