@@ -1,4 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Caching.Memory;
@@ -81,14 +83,22 @@ public class SchemaResolverService : ISchemaResolverService
     ILogger<SchemaResolverService> logger,
     IMemoryCache memoryCache,
     IOptions<CacheOptions> cacheOptions,
-    IOptions<SpecificationOptions>? specificationOptions = null)
+    IOptions<SpecificationOptions>? specificationOptions = null,
+    IOptions<SchemaResolutionOptions>? schemaResolutionOptions = null)
   {
     _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
     _cacheOptions = cacheOptions?.Value ?? throw new ArgumentNullException(nameof(cacheOptions));
     _localSpecificationBaseUrl = specificationOptions?.Value?.BaseUrl;
-    _remoteSchemaLoader = new RemoteSchemaLoader(httpClient, logger, memoryCache, cacheOptions, _localSpecificationBaseUrl);
+    _remoteSchemaLoader = new RemoteSchemaLoader(
+      httpClient,
+      logger,
+      memoryCache,
+      cacheOptions,
+      _localSpecificationBaseUrl,
+      schemaResolutionOptions?.Value?.KnownJsonSchemaUrls,
+      schemaResolutionOptions?.Value?.WarnOnUnknownJsonSchemaDraft ?? true);
     _referenceResolver = new ReferenceResolver(logger, _remoteSchemaLoader);
   }
 
@@ -313,7 +323,13 @@ public class SchemaResolverService : ISchemaResolverService
 
       var settings = new JSchemaReaderSettings
       {
-        Resolver = resolver
+        Resolver = resolver,
+        // References are pre-resolved by our resolver; disable a second pass in Newtonsoft to avoid
+        // runtime remote resolution and failures on remaining informational refs.
+        ResolveSchemaReferences = false,
+        // Draft-specific meta-schema validation can reject otherwise parseable schemas when newer
+        // vocabularies are present. We validate payloads against the parsed schema downstream.
+        ValidateVersion = false
       };
 
       // Set base URI for any remaining reference resolution if provided
@@ -334,13 +350,27 @@ public class SchemaResolverService : ISchemaResolverService
         _logger.LogWarning(ex, "Failed to parse schema with resolver, attempting to parse without resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
         try
         {
-          // Fallback: parse without resolver
-          schema = await Task.Run(() => JSchema.Parse(resolvedSchemaJson), cancellationToken);
+          // Fallback: parse original schema with the same relaxed settings.
+          schema = await Task.Run(() => JSchema.Parse(schemaJson, settings), cancellationToken);
           _logger.LogDebug("Successfully created schema without resolver");
         }
         catch (Exception fallbackEx)
         {
-          _logger.LogError(fallbackEx, "Failed to parse schema even without resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+          var originalFingerprint = CreateSchemaFingerprint(schemaJson);
+          var resolvedFingerprint = CreateSchemaFingerprint(resolvedSchemaJson);
+          var originalSchemaId = ExtractTopLevelSchemaId(schemaJson);
+          var resolvedSchemaId = ExtractTopLevelSchemaId(resolvedSchemaJson);
+
+          _logger.LogError(
+            fallbackEx,
+            "Failed to parse schema even without resolver. DocumentUri: {DocumentUri}. ReaderError: {ReaderError}. OriginalFingerprint: {OriginalFingerprint}. ResolvedFingerprint: {ResolvedFingerprint}. OriginalSchemaId: {OriginalSchemaId}. ResolvedSchemaId: {ResolvedSchemaId}",
+            documentUri != null ? SanitizeUrlForLogging(documentUri) : "none",
+            SanitizeStringForLogging(fallbackEx.Message),
+            originalFingerprint,
+            resolvedFingerprint,
+            SanitizeStringForLogging(originalSchemaId),
+            SanitizeStringForLogging(resolvedSchemaId));
+
           throw new InvalidOperationException("Unable to parse schema with or without resolver", fallbackEx);
         }
       }
@@ -352,6 +382,46 @@ public class SchemaResolverService : ISchemaResolverService
       _logger.LogError(ex, "Failed to create JSON schema from JSON with resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
       throw;
     }
+  }
+
+  private static string CreateSchemaFingerprint(string schemaJson)
+  {
+    if (string.IsNullOrWhiteSpace(schemaJson))
+    {
+      return "sha256:empty:length:0";
+    }
+
+    var bytes = Encoding.UTF8.GetBytes(schemaJson);
+    var hash = SHA256.HashData(bytes);
+    var hex = Convert.ToHexString(hash).ToLowerInvariant();
+
+    return $"sha256:{hex}:length:{bytes.Length}";
+  }
+
+  private static string ExtractTopLevelSchemaId(string schemaJson)
+  {
+    if (string.IsNullOrWhiteSpace(schemaJson))
+    {
+      return "none";
+    }
+
+    try
+    {
+      var node = JsonNode.Parse(schemaJson);
+      if (node is JsonObject obj &&
+          obj.TryGetPropertyValue("$id", out var idNode) &&
+          idNode is JsonValue idValue)
+      {
+        var id = idValue.GetValue<string>();
+        return string.IsNullOrWhiteSpace(id) ? "none" : id;
+      }
+    }
+    catch
+    {
+      // Ignore best-effort extraction failures and continue with diagnostics.
+    }
+
+    return "none";
   }
 }
 

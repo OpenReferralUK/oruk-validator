@@ -197,6 +197,62 @@ public class SchemaResolverServiceTests
     Assert.That(result, Is.Not.Null);
   }
 
+  [Test]
+  public async Task CreateSchemaFromJsonAsync_WithDraft202012MetaSchema_ParsesSuccessfully()
+  {
+    // Arrange
+    var rootSchemaJson = """
+        {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "$id": "https://json-schema.org/draft/2020-12/schema",
+          "$dynamicAnchor": "meta",
+          "allOf": [
+            { "$ref": "meta/core" }
+          ],
+          "type": ["object", "boolean"]
+        }
+        """;
+
+    var coreMetaJson = """
+        {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "$id": "https://json-schema.org/draft/2020-12/meta/core",
+          "$dynamicAnchor": "meta",
+          "type": ["object", "boolean"],
+          "properties": {
+            "$defs": {
+              "type": "object",
+              "additionalProperties": { "$dynamicRef": "#meta" }
+            }
+          }
+        }
+        """;
+
+    var handler = new MockHttpMessageHandler(async request =>
+    {
+      var uri = request.RequestUri?.GetLeftPart(UriPartial.Path);
+      if (uri == "https://json-schema.org/draft/2020-12/meta/core")
+      {
+        return new HttpResponseMessage
+        {
+          StatusCode = System.Net.HttpStatusCode.OK,
+          Content = new StringContent(coreMetaJson)
+        };
+      }
+
+      return new HttpResponseMessage { StatusCode = System.Net.HttpStatusCode.NotFound };
+    });
+
+    using var httpClient = new HttpClient(handler);
+    var service = new SchemaResolverService(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+
+    // Act
+    var result = await service.CreateSchemaFromJsonAsync(rootSchemaJson, "https://json-schema.org/draft/2020-12/schema");
+
+    // Assert
+    Assert.That(result, Is.Not.Null);
+  }
+
   #endregion
 
   #region Cache Tests

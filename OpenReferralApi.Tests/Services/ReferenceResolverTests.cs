@@ -429,6 +429,185 @@ public class ReferenceResolverTests
     }
 
         [Test]
+        public async Task ResolveAllRefsAsync_WithInternalDynamicAnchorRef_ResolvesCorrectly()
+        {
+                // Arrange
+                var schema = """
+                        {
+                            "$dynamicAnchor": "meta",
+                            "type": "object",
+                            "properties": {
+                                "self": {
+                                    "$ref": "#meta"
+                                }
+                            }
+                        }
+                        """;
+
+                var handler = new MockHttpMessageHandler(async request =>
+                {
+                        return new HttpResponseMessage
+                        {
+                                StatusCode = System.Net.HttpStatusCode.OK,
+                                Content = new StringContent(@"{""type"": ""object""}")
+                        };
+                });
+
+                using var httpClient = new HttpClient(handler);
+                var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+                var resolver = new ReferenceResolver(_loggerMock.Object, loader);
+
+                var rootDoc = JsonNode.Parse(schema);
+                resolver.Initialize(rootDoc, "https://example.com/draft/2020-12/schema");
+
+                // Act
+                var result = await resolver.ResolveAllRefsAsync(rootDoc, new HashSet<string>());
+
+                // Assert
+                Assert.That(result, Is.Not.Null);
+                var resultObj = result!.AsObject();
+                Assert.That(resultObj["type"]!.GetValue<string>(), Is.EqualTo("object"));
+
+                var self = resultObj["properties"]!["self"]!.AsObject();
+                Assert.That(self["type"]!.GetValue<string>(), Is.EqualTo("object"));
+        }
+
+        [Test]
+        public async Task ResolveAllRefsAsync_WithExternalAnchorFragment_ResolvesCorrectly()
+        {
+                var tempDirectory = Path.Combine(Path.GetTempPath(), $"openreferral-ref-{Guid.NewGuid():N}");
+                Directory.CreateDirectory(tempDirectory);
+
+                try
+                {
+                        var metaPath = Path.Combine(tempDirectory, "meta.json");
+                        await File.WriteAllTextAsync(metaPath, """
+                                {
+                                    "$dynamicAnchor": "meta",
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                                """);
+
+                        var schema = """
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "meta": {
+                                            "$ref": "./meta.json#meta"
+                                        }
+                                    }
+                                }
+                                """;
+
+                        var handler = new MockHttpMessageHandler(async request =>
+                        {
+                                return new HttpResponseMessage
+                                {
+                                        StatusCode = System.Net.HttpStatusCode.OK,
+                                        Content = new StringContent(@"{""type"": ""object""}")
+                                };
+                        });
+
+                        using var httpClient = new HttpClient(handler);
+                        var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+                        var resolver = new ReferenceResolver(_loggerMock.Object, loader);
+
+                        var rootDoc = JsonNode.Parse(schema);
+                        resolver.Initialize(rootDoc, Path.Combine(tempDirectory, "schema.json"));
+
+                        var result = await resolver.ResolveAllRefsAsync(rootDoc, new HashSet<string>());
+
+                        Assert.That(result, Is.Not.Null);
+                        var meta = result!["properties"]!["meta"]!.AsObject();
+                        Assert.That(meta["type"]!.GetValue<string>(), Is.EqualTo("object"));
+                        Assert.That(meta["properties"]!["name"]!["type"]!.GetValue<string>(), Is.EqualTo("string"));
+                }
+                finally
+                {
+                        if (Directory.Exists(tempDirectory))
+                        {
+                                Directory.Delete(tempDirectory, recursive: true);
+                        }
+                }
+        }
+
+            [Test]
+            public async Task ResolveAllRefsAsync_WithOfficialJsonSchemaMetaRef_FetchesRemotelyAndCaches()
+            {
+                var schema = """
+                    {
+                        "type": "object",
+                        "properties": {
+                            "core": {
+                                "$ref": "https://json-schema.org/draft/2020-12/meta/core#meta"
+                            }
+                        }
+                    }
+                    """;
+
+                var coreSchemaJson = """
+                    {
+                        "$id": "https://json-schema.org/draft/2020-12/meta/core",
+                        "$dynamicAnchor": "meta",
+                        "$defs": {
+                            "uriString": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                    """;
+
+                var requestCount = 0;
+                var handler = new MockHttpMessageHandler(_ =>
+                {
+                    requestCount++;
+                    return Task.FromResult(new HttpResponseMessage
+                    {
+                        StatusCode = System.Net.HttpStatusCode.OK,
+                        Content = new StringContent(coreSchemaJson)
+                    });
+                });
+
+                var cacheOptions = Options.Create(new CacheOptions
+                {
+                    Enabled = true,
+                    ExpirationMinutes = 60,
+                    UseSlidingExpiration = true,
+                    SlidingExpirationMinutes = 60
+                });
+
+                using var httpClient = new HttpClient(handler);
+                var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, cacheOptions);
+
+                var firstResolver = new ReferenceResolver(_loggerMock.Object, loader);
+                var firstRootDoc = JsonNode.Parse(schema);
+                firstResolver.Initialize(firstRootDoc, "https://example.com/root-schema.json");
+                var firstResult = await firstResolver.ResolveAllRefsAsync(firstRootDoc, new HashSet<string>());
+
+                var secondResolver = new ReferenceResolver(_loggerMock.Object, loader);
+                var secondRootDoc = JsonNode.Parse(schema);
+                secondResolver.Initialize(secondRootDoc, "https://example.com/root-schema.json");
+                var secondResult = await secondResolver.ResolveAllRefsAsync(secondRootDoc, new HashSet<string>());
+
+                Assert.That(firstResult, Is.Not.Null);
+                Assert.That(secondResult, Is.Not.Null);
+
+                var firstCoreSchema = firstResult!["properties"]!["core"]!.AsObject();
+                Assert.That(firstCoreSchema["$dynamicAnchor"]!.GetValue<string>(), Is.EqualTo("meta"));
+                Assert.That(firstCoreSchema.ContainsKey("$defs"), Is.True);
+
+                var secondCoreSchema = secondResult!["properties"]!["core"]!.AsObject();
+                Assert.That(secondCoreSchema["$dynamicAnchor"]!.GetValue<string>(), Is.EqualTo("meta"));
+
+                Assert.That(requestCount, Is.EqualTo(1), "Known schema URL should be fetched once and then served from cache");
+            }
+
+        [Test]
         public async Task ResolveAllRefsAsync_WithRelativeLocalFileRef_ResolvesCorrectly()
         {
                 var tempDirectory = Path.Combine(Path.GetTempPath(), $"openreferral-ref-{Guid.NewGuid():N}");
