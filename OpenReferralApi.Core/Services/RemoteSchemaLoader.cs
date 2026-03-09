@@ -13,17 +13,9 @@ namespace OpenReferralApi.Core.Services;
 /// </summary>
 internal class RemoteSchemaLoader
 {
-    private static readonly HashSet<string> KnownJsonSchemaUrls = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "https://json-schema.org/draft/2020-12/schema",
-        "https://json-schema.org/draft/2020-12/meta/core",
-        "https://json-schema.org/draft/2020-12/meta/applicator",
-        "https://json-schema.org/draft/2020-12/meta/unevaluated",
-        "https://json-schema.org/draft/2020-12/meta/validation",
-        "https://json-schema.org/draft/2020-12/meta/meta-data",
-        "https://json-schema.org/draft/2020-12/meta/format-annotation",
-        "https://json-schema.org/draft/2020-12/meta/content"
-    };
+    private readonly HashSet<string> _knownJsonSchemaUrls;
+    private readonly HashSet<string> _unknownDraftWarnings = new(StringComparer.OrdinalIgnoreCase);
+    private readonly bool _warnOnUnknownJsonSchemaDraft;
 
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
@@ -37,13 +29,27 @@ internal class RemoteSchemaLoader
         ILogger logger,
         IMemoryCache memoryCache,
         IOptions<CacheOptions> cacheOptions,
-        string? localSpecificationBaseUrl = null)
+        string? localSpecificationBaseUrl = null,
+        IEnumerable<string>? knownJsonSchemaUrls = null,
+        bool warnOnUnknownJsonSchemaDraft = true)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
         _cacheOptions = cacheOptions?.Value ?? throw new ArgumentNullException(nameof(cacheOptions));
         _localSpecificationBaseUrl = localSpecificationBaseUrl;
+        _warnOnUnknownJsonSchemaDraft = warnOnUnknownJsonSchemaDraft;
+        _knownJsonSchemaUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var configuredUrls = knownJsonSchemaUrls ?? SchemaResolutionOptionsDefaults.KnownJsonSchemaUrls;
+        foreach (var url in configuredUrls)
+        {
+            var normalized = NormalizeAbsoluteUrl(url);
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                _knownJsonSchemaUrls.Add(normalized);
+            }
+        }
     }
 
     /// <summary>
@@ -268,19 +274,64 @@ internal class RemoteSchemaLoader
         return schemaUrl;
     }
 
-    private static string? NormalizeKnownSchemaUrl(string schemaUrl)
+    private string? NormalizeKnownSchemaUrl(string schemaUrl)
+    {
+        var normalized = NormalizeAbsoluteUrl(schemaUrl);
+        if (normalized == null)
+        {
+            return null;
+        }
+
+        if (_knownJsonSchemaUrls.Contains(normalized))
+        {
+            return normalized;
+        }
+
+        if (_warnOnUnknownJsonSchemaDraft &&
+            IsJsonSchemaDraftUrl(normalized) &&
+            _unknownDraftWarnings.Add(normalized))
+        {
+            _logger.LogWarning(
+                "Encountered json-schema.org draft URL not present in configured known schema list: {SchemaUrl}",
+                SchemaResolverService.SanitizeUrlForLogging(normalized));
+        }
+
+        return null;
+    }
+
+    private static string? NormalizeAbsoluteUrl(string schemaUrl)
     {
         if (!Uri.TryCreate(schemaUrl, UriKind.Absolute, out var uri))
         {
             return null;
         }
 
-        var normalized = uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
-        if (KnownJsonSchemaUrls.Contains(normalized))
+        return uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
+    }
+
+    private static bool IsJsonSchemaDraftUrl(string absoluteUrl)
+    {
+        if (!Uri.TryCreate(absoluteUrl, UriKind.Absolute, out var uri))
         {
-            return normalized;
+            return false;
         }
 
-        return null;
+        return string.Equals(uri.Host, "json-schema.org", StringComparison.OrdinalIgnoreCase) &&
+               uri.AbsolutePath.StartsWith("/draft/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static class SchemaResolutionOptionsDefaults
+    {
+        public static readonly string[] KnownJsonSchemaUrls =
+        [
+            "https://json-schema.org/draft/2020-12/schema",
+            "https://json-schema.org/draft/2020-12/meta/core",
+            "https://json-schema.org/draft/2020-12/meta/applicator",
+            "https://json-schema.org/draft/2020-12/meta/unevaluated",
+            "https://json-schema.org/draft/2020-12/meta/validation",
+            "https://json-schema.org/draft/2020-12/meta/meta-data",
+            "https://json-schema.org/draft/2020-12/meta/format-annotation",
+            "https://json-schema.org/draft/2020-12/meta/content"
+        ];
     }
 }

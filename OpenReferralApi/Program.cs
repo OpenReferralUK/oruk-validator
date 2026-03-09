@@ -33,6 +33,9 @@ builder.Services.Configure<SpecificationOptions>(
 builder.Services.Configure<CacheOptions>(
     builder.Configuration.GetSection(CacheOptions.SectionName));
 
+builder.Services.Configure<SchemaResolutionOptions>(
+    builder.Configuration.GetSection(SchemaResolutionOptions.SectionName));
+
 builder.Services.Configure<SchemaWarmupOptions>(
     builder.Configuration.GetSection(SchemaWarmupOptions.SectionName));
 

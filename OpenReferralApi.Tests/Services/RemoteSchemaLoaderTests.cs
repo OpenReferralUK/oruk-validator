@@ -673,6 +673,57 @@ public class RemoteSchemaLoaderTests
         Assert.That(cached, Is.True, "Schema should be cached with sliding expiration");
     }
 
+    [Test]
+    public async Task LoadRemoteSchemaAsync_WithConfiguredKnownSchemaUrl_NormalizesForCacheKey()
+    {
+        // Arrange
+        var requestedUrl = "https://json-schema.org/draft/custom/meta/core?cacheBust=1#meta";
+        var canonicalUrl = "https://json-schema.org/draft/custom/meta/core";
+        var schemaJson = @"{""type"": ""object""}";
+
+        var handler = new MockHttpMessageHandler(async request =>
+        {
+            return new HttpResponseMessage
+            {
+                StatusCode = System.Net.HttpStatusCode.OK,
+                Content = new StringContent(schemaJson)
+            };
+        });
+
+        using var httpClient = new HttpClient(handler);
+
+        var cacheOptions = Options.Create(new CacheOptions
+        {
+            Enabled = true,
+            ExpirationMinutes = 60,
+            UseSlidingExpiration = false
+        });
+
+        var loader = new RemoteSchemaLoader(
+            httpClient,
+            _loggerMock.Object,
+            _memoryCache,
+            cacheOptions,
+            localSpecificationBaseUrl: null,
+            knownJsonSchemaUrls: new[] { canonicalUrl });
+
+        // Act
+        var result = await loader.LoadRemoteSchemaAsync(requestedUrl);
+
+        // Assert
+        Assert.That(result, Is.Not.Null);
+
+        var canonicalCacheKey = $"schema:{canonicalUrl}";
+        var rawCacheKey = $"schema:{requestedUrl}";
+
+        var hasCanonicalEntry = _memoryCache.TryGetValue<string>(canonicalCacheKey, out var canonicalContent);
+        var hasRawEntry = _memoryCache.TryGetValue<string>(rawCacheKey, out _);
+
+        Assert.That(hasCanonicalEntry, Is.True, "Known schema URL should be cached using canonical normalized URL");
+        Assert.That(canonicalContent, Is.EqualTo(schemaJson));
+        Assert.That(hasRawEntry, Is.False, "Raw URL with query/fragment should not be used as cache key");
+    }
+
     #endregion
 
     /// <summary>
