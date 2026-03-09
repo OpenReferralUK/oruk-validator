@@ -78,6 +78,15 @@ internal class ReferenceResolver
                 {
                     // Resolve internal JSON pointer reference
                     resolved = await ResolveInternalRefAsync(refString, visitedRefs);
+                    
+                    // If internal reference resolution failed (returned null), keep the original $ref
+                    // This prevents null values from being inserted into schema structures like allOf arrays
+                    // where Newtonsoft.Json.Schema cannot handle them
+                    if (resolved == null)
+                    {
+                        _logger.LogDebug("Could not resolve internal reference {Ref}, keeping as-is", refString);
+                        return obj.DeepClone();
+                    }
                 }
                 else if (IsLocalSchemaRef(refString))
                 {
