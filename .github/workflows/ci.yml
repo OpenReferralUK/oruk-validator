@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v6.0.2
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5.1.0
+        uses: actions/setup-dotnet@v5.2.0
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -82,11 +82,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6.0.2
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5.1.0
+        uses: actions/setup-dotnet@v5.2.0
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.32.4
+        uses: github/codeql-action/init@v4.32.6
         with:
           languages: ${{ matrix.language }}
           build-mode: none
@@ -95,7 +95,7 @@ jobs:
           dotnet restore OpenReferralApi.sln
           dotnet build OpenReferralApi.sln --configuration Release --no-restore --verbosity normal
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4.32.4
+        uses: github/codeql-action/analyze@v4.32.6
 
   # --- JOB 3: TRIVY FS ---
   security-scan-fs:
@@ -112,7 +112,7 @@ jobs:
           key: trivy-db-${{ github.run_id }}
           restore-keys: trivy-db-
       - name: Run Trivy (fs)
-        uses: aquasecurity/trivy-action@0.34.1
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -120,7 +120,7 @@ jobs:
           output: 'trivy-fs-results.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM,UNKNOWN'
       - name: Upload Trivy FS SARIF
-        uses: github/codeql-action/upload-sarif@v4.32.4
+        uses: github/codeql-action/upload-sarif@v4.32.6
         if: always()
         with:
           sarif_file: trivy-fs-results.sarif
@@ -136,9 +136,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6.0.2
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.12.0
+        uses: docker/setup-buildx-action@v4.0.0
       - name: Login to GHCR
-        uses: docker/login-action@v3.7.0
+        uses: docker/login-action@v4.0.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -150,7 +150,7 @@ jobs:
           echo "repo_name=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
       - name: Extract Docker metadata & tags
         id: meta
-        uses: docker/metadata-action@v5.10.0
+        uses: docker/metadata-action@v6.0.0
         with:
           images: ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/${{ steps.lowercase.outputs.repo_name }}
           tags: |
@@ -165,7 +165,7 @@ jobs:
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v6.19.2
+        uses: docker/build-push-action@v7.0.0
         with:
           context: .
           file: ./Dockerfile
@@ -202,14 +202,14 @@ jobs:
           key: trivy-db-${{ github.run_id }}
           restore-keys: trivy-db-
       - name: Login to GHCR
-        uses: docker/login-action@v3.7.0
+        uses: docker/login-action@v4.0.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy (image)
         id: trivy_scan
-        uses: aquasecurity/trivy-action@0.34.1
+        uses: aquasecurity/trivy-action@0.35.0
         continue-on-error: true
         with:
           image-ref: ${{ needs.docker-build.outputs.image_ref }}
@@ -218,7 +218,7 @@ jobs:
           severity: 'CRITICAL,HIGH,MEDIUM,UNKNOWN'
 
       - name: Upload Trivy Image SARIF
-        uses: github/codeql-action/upload-sarif@v4.32.4
+        uses: github/codeql-action/upload-sarif@v4.32.6
         if: always() && hashFiles('trivy-image-results.sarif') != ''
         with:
           sarif_file: trivy-image-results.sarif
@@ -232,7 +232,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6.0.2
       - name: Login to GHCR
-        uses: docker/login-action@v3.7.0
+        uses: docker/login-action@v4.0.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
