@@ -79,6 +79,11 @@ internal class ReferenceResolver
                     // Resolve internal JSON pointer reference
                     resolved = await ResolveInternalRefAsync(refString, visitedRefs);
                 }
+                else if (IsLocalSchemaRef(refString))
+                {
+                    // Resolve local file or relative path reference
+                    resolved = await ResolveRefAsync(refString, visitedRefs);
+                }
                 else
                 {
                     // Keep the reference as-is if we can't identify it
@@ -218,45 +223,33 @@ internal class ReferenceResolver
         var schemaUrl = parts[0];
         var fragment = parts.Length > 1 ? $"#{parts[1]}" : string.Empty;
 
+        var schemaLocation = ResolveSchemaLocation(schemaUrl);
+        var resolvedRefKey = string.IsNullOrEmpty(fragment)
+            ? schemaLocation
+            : $"{schemaLocation}{fragment}";
+
         // Check for circular references
-        if (visitedRefs.Contains(refUrl))
+        if (visitedRefs.Contains(resolvedRefKey))
         {
-            _logger.LogDebug("Circular reference detected: {Ref}", SchemaResolverService.SanitizeUrlForLogging(refUrl));
+            _logger.LogDebug("Circular reference detected: {Ref}", SchemaResolverService.SanitizeStringForLogging(resolvedRefKey));
             return new JsonObject { ["$ref"] = refUrl };
         }
 
-        visitedRefs.Add(refUrl);
+        visitedRefs.Add(resolvedRefKey);
 
         try
         {
             // Check cache first
-            if (_refCache.TryGetValue(refUrl, out var cached))
+            if (_refCache.TryGetValue(resolvedRefKey, out var cached))
             {
                 return cached?.DeepClone();
             }
 
-            // Resolve relative URLs using base URI
-            var absoluteUrl = schemaUrl;
-            if (!string.IsNullOrEmpty(_baseUri) && !string.IsNullOrEmpty(schemaUrl))
-            {
-                if (!Uri.TryCreate(schemaUrl, UriKind.Absolute, out _))
-                {
-                    if (Uri.TryCreate(new Uri(_baseUri), schemaUrl, out var resolvedUri))
-                    {
-                        absoluteUrl = resolvedUri.ToString();
-                        _logger.LogDebug("Resolved relative URL {RelativeUrl} to {AbsoluteUrl}",
-                            SchemaResolverService.SanitizeUrlForLogging(schemaUrl),
-                            SchemaResolverService.SanitizeUrlForLogging(absoluteUrl));
-                    }
-                }
-            }
-
-            // Load remote schema
-            var schema = await _remoteSchemaLoader.LoadRemoteSchemaAsync(absoluteUrl);
+            var schema = await LoadSchemaAsync(schemaLocation);
 
             if (schema == null)
             {
-                _logger.LogWarning("Failed to load remote schema: {Url}", SchemaResolverService.SanitizeUrlForLogging(absoluteUrl));
+                _logger.LogWarning("Failed to load schema: {Location}", SchemaResolverService.SanitizeStringForLogging(schemaLocation));
                 return null;
             }
 
@@ -271,7 +264,7 @@ internal class ReferenceResolver
                 try
                 {
                     _rootDocument = schema;
-                    _baseUri = absoluteUrl;
+                    _baseUri = schemaLocation;
                     resolved = await ResolveInternalRefAsync(fragment, visitedRefs);
                 }
                 finally
@@ -289,7 +282,7 @@ internal class ReferenceResolver
                 try
                 {
                     _rootDocument = schema;
-                    _baseUri = absoluteUrl;
+                    _baseUri = schemaLocation;
                     resolved = await ResolveAllRefsAsync(schema, visitedRefs);
                 }
                 finally
@@ -300,13 +293,13 @@ internal class ReferenceResolver
             }
 
             // Cache the resolved value
-            _refCache[refUrl] = resolved;
+            _refCache[resolvedRefKey] = resolved;
 
             return resolved?.DeepClone();
         }
         finally
         {
-            visitedRefs.Remove(refUrl);
+            visitedRefs.Remove(resolvedRefKey);
         }
     }
 
@@ -320,11 +313,113 @@ internal class ReferenceResolver
     }
 
     /// <summary>
+    /// Checks if a reference string points to a local schema file path.
+    /// </summary>
+    private static bool IsLocalSchemaRef(string refString)
+    {
+        if (string.IsNullOrWhiteSpace(refString))
+        {
+            return false;
+        }
+
+        var schemaPart = refString.Split('#')[0];
+        if (string.IsNullOrWhiteSpace(schemaPart))
+        {
+            return false;
+        }
+
+        if (Uri.TryCreate(schemaPart, UriKind.Absolute, out var absoluteUri))
+        {
+            return absoluteUri.Scheme == Uri.UriSchemeFile;
+        }
+
+        return Path.IsPathRooted(schemaPart) ||
+               !schemaPart.Contains("://", StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Checks if a reference string is an internal JSON pointer.
     /// </summary>
     private static bool IsInternalRef(string refString)
     {
         return refString.StartsWith("#/", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Resolves a schema location against the current base URI/path.
+    /// </summary>
+    private string ResolveSchemaLocation(string schemaRef)
+    {
+        if (string.IsNullOrWhiteSpace(schemaRef))
+        {
+            return _baseUri ?? string.Empty;
+        }
+
+        if (Uri.TryCreate(schemaRef, UriKind.Absolute, out var absoluteUri))
+        {
+            return absoluteUri.Scheme == Uri.UriSchemeFile
+                ? absoluteUri.LocalPath
+                : schemaRef;
+        }
+
+        if (string.IsNullOrWhiteSpace(_baseUri))
+        {
+            return Path.GetFullPath(schemaRef);
+        }
+
+        if (Uri.TryCreate(_baseUri, UriKind.Absolute, out var baseUri))
+        {
+            if (Uri.TryCreate(baseUri, schemaRef, out var resolvedUri))
+            {
+                return resolvedUri.Scheme == Uri.UriSchemeFile
+                    ? resolvedUri.LocalPath
+                    : resolvedUri.ToString();
+            }
+        }
+
+        var basePath = _baseUri;
+        if (!string.IsNullOrEmpty(Path.GetExtension(basePath)))
+        {
+            basePath = Path.GetDirectoryName(basePath) ?? basePath;
+        }
+
+        return Path.GetFullPath(Path.Combine(basePath, schemaRef));
+    }
+
+    /// <summary>
+    /// Loads a schema from HTTP(S) or a local file path.
+    /// </summary>
+    private async Task<JsonNode?> LoadSchemaAsync(string schemaLocation)
+    {
+        if (Uri.TryCreate(schemaLocation, UriKind.Absolute, out var schemaUri) &&
+            (schemaUri.Scheme == Uri.UriSchemeHttp || schemaUri.Scheme == Uri.UriSchemeHttps))
+        {
+            return await _remoteSchemaLoader.LoadRemoteSchemaAsync(schemaLocation);
+        }
+
+        var localPath = schemaLocation;
+        if (Uri.TryCreate(schemaLocation, UriKind.Absolute, out var fileUri) &&
+            fileUri.Scheme == Uri.UriSchemeFile)
+        {
+            localPath = fileUri.LocalPath;
+        }
+
+        if (!File.Exists(localPath))
+        {
+            _logger.LogWarning("Schema file not found: {Path}", SchemaResolverService.SanitizeStringForLogging(localPath));
+            return null;
+        }
+
+        try
+        {
+            var content = await File.ReadAllTextAsync(localPath);
+            return JsonNode.Parse(content);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load local schema file: {Path}", SchemaResolverService.SanitizeStringForLogging(localPath));
+            throw;
+        }
     }
 
     /// <summary>

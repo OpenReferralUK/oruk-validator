@@ -136,7 +136,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             // Build summary
             result.Summary = BuildTestSummary(specValidation, endpointTests, request.Options);
-            result.IsValid = (specValidation?.IsValid ?? true) && result.Summary.FailedTests == 0;
+            result.IsValid = result.Summary.FailedTests == 0;
 
             // Set metadata
             result.Metadata = new CommonValidationMetadata
