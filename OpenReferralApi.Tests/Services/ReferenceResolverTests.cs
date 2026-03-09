@@ -428,6 +428,444 @@ public class ReferenceResolverTests
         Assert.That(result, Is.Not.Null);
     }
 
+        [Test]
+        public async Task ResolveAllRefsAsync_WithRelativeLocalFileRef_ResolvesCorrectly()
+        {
+                var tempDirectory = Path.Combine(Path.GetTempPath(), $"openreferral-ref-{Guid.NewGuid():N}");
+                Directory.CreateDirectory(tempDirectory);
+
+                try
+                {
+                        var definitionsPath = Path.Combine(tempDirectory, "definitions.json");
+                        await File.WriteAllTextAsync(definitionsPath, """
+                                {
+                                    "$defs": {
+                                        "name": {
+                                            "type": "string",
+                                            "minLength": 1
+                                        }
+                                    }
+                                }
+                                """);
+
+                        var schema = """
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {
+                                            "$ref": "./definitions.json#/$defs/name"
+                                        }
+                                    }
+                                }
+                                """;
+
+                        var handler = new MockHttpMessageHandler(async request =>
+                        {
+                                return new HttpResponseMessage
+                                {
+                                        StatusCode = System.Net.HttpStatusCode.OK,
+                                        Content = new StringContent(@"{""type"": ""object""}")
+                                };
+                        });
+
+                        using var httpClient = new HttpClient(handler);
+                        var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+                        var resolver = new ReferenceResolver(_loggerMock.Object, loader);
+
+                        var rootDoc = JsonNode.Parse(schema);
+                        var rootSchemaPath = Path.Combine(tempDirectory, "service.json");
+                        resolver.Initialize(rootDoc, rootSchemaPath);
+
+                        var result = await resolver.ResolveAllRefsAsync(rootDoc, new HashSet<string>());
+
+                        Assert.That(result, Is.Not.Null);
+                        var properties = result!["properties"]!.AsObject();
+                        var nameSchema = properties["name"]!.AsObject();
+
+                        Assert.That(nameSchema["type"]!.GetValue<string>(), Is.EqualTo("string"));
+                        Assert.That(nameSchema["minLength"]!.GetValue<int>(), Is.EqualTo(1));
+                }
+                finally
+                {
+                        if (Directory.Exists(tempDirectory))
+                        {
+                                Directory.Delete(tempDirectory, recursive: true);
+                        }
+                }
+        }
+
+            [Test]
+            public async Task ResolveAllRefsAsync_WithMissingRelativeLocalFileRef_ReturnsNullAndKeepsParentStable()
+            {
+                var tempDirectory = Path.Combine(Path.GetTempPath(), $"openreferral-ref-{Guid.NewGuid():N}");
+                Directory.CreateDirectory(tempDirectory);
+
+                try
+                {
+                    var schema = """
+                        {
+                            "type": "object",
+                            "properties": {
+                            "name": {
+                                "$ref": "./missing-definitions.json#/$defs/name"
+                            },
+                            "status": {
+                                "type": "string"
+                            }
+                            }
+                        }
+                        """;
+
+                    var handler = new MockHttpMessageHandler(async request =>
+                    {
+                        return new HttpResponseMessage
+                        {
+                            StatusCode = System.Net.HttpStatusCode.OK,
+                            Content = new StringContent(@"{""type"": ""object""}")
+                        };
+                    });
+
+                    using var httpClient = new HttpClient(handler);
+                    var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+                    var resolver = new ReferenceResolver(_loggerMock.Object, loader);
+
+                    var rootDoc = JsonNode.Parse(schema);
+                    resolver.Initialize(rootDoc, Path.Combine(tempDirectory, "service.json"));
+
+                    var result = await resolver.ResolveAllRefsAsync(rootDoc, new HashSet<string>());
+
+                    Assert.That(result, Is.Not.Null);
+                    var resultObject = result!.AsObject();
+                    Assert.That(resultObject["type"]!.GetValue<string>(), Is.EqualTo("object"));
+
+                    var properties = resultObject["properties"]!.AsObject();
+                    Assert.That(properties.ContainsKey("name"), Is.True);
+                    Assert.That(properties["name"], Is.Null, "Missing local file ref should resolve to null value");
+
+                    var statusSchema = properties["status"]!.AsObject();
+                    Assert.That(statusSchema["type"]!.GetValue<string>(), Is.EqualTo("string"), "Sibling schema should be preserved");
+                }
+                finally
+                {
+                    if (Directory.Exists(tempDirectory))
+                    {
+                        Directory.Delete(tempDirectory, recursive: true);
+                    }
+                }
+            }
+
+        [Test]
+        public async Task ResolveAllRefsAsync_WithFileSchemeRef_ResolvesCorrectly()
+        {
+                var tempDirectory = Path.Combine(Path.GetTempPath(), $"openreferral-ref-{Guid.NewGuid():N}");
+                Directory.CreateDirectory(tempDirectory);
+
+                try
+                {
+                        var definitionsPath = Path.Combine(tempDirectory, "definitions.json");
+                        await File.WriteAllTextAsync(definitionsPath, """
+                                {
+                                    "$defs": {
+                                        "id": {
+                                            "type": "string",
+                                            "pattern": "^[a-z0-9-]+$"
+                                        }
+                                    }
+                                }
+                                """);
+
+                        var definitionsUri = new Uri(definitionsPath).AbsoluteUri;
+                        var schema = $$"""
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "$ref": "{{definitionsUri}}#/$defs/id"
+                                        }
+                                    }
+                                }
+                                """;
+
+                        var handler = new MockHttpMessageHandler(async request =>
+                        {
+                                return new HttpResponseMessage
+                                {
+                                        StatusCode = System.Net.HttpStatusCode.OK,
+                                        Content = new StringContent(@"{""type"": ""object""}")
+                                };
+                        });
+
+                        using var httpClient = new HttpClient(handler);
+                        var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+                        var resolver = new ReferenceResolver(_loggerMock.Object, loader);
+
+                        var rootDoc = JsonNode.Parse(schema);
+                        resolver.Initialize(rootDoc, Path.Combine(tempDirectory, "service.json"));
+
+                        var result = await resolver.ResolveAllRefsAsync(rootDoc, new HashSet<string>());
+
+                        Assert.That(result, Is.Not.Null);
+                        var properties = result!["properties"]!.AsObject();
+                        var idSchema = properties["id"]!.AsObject();
+
+                        Assert.That(idSchema["type"]!.GetValue<string>(), Is.EqualTo("string"));
+                        Assert.That(idSchema["pattern"]!.GetValue<string>(), Is.EqualTo("^[a-z0-9-]+$"));
+                }
+                finally
+                {
+                        if (Directory.Exists(tempDirectory))
+                        {
+                                Directory.Delete(tempDirectory, recursive: true);
+                        }
+                }
+        }
+
+            [Test]
+            public async Task ResolveAllRefsAsync_WithNestedRelativeLocalFileRef_ResolvesCorrectly()
+            {
+                var tempDirectory = Path.Combine(Path.GetTempPath(), $"openreferral-ref-{Guid.NewGuid():N}");
+                var schemasDirectory = Path.Combine(tempDirectory, "schemas");
+                var sharedDirectory = Path.Combine(tempDirectory, "shared");
+                Directory.CreateDirectory(schemasDirectory);
+                Directory.CreateDirectory(sharedDirectory);
+
+                try
+                {
+                    var definitionsPath = Path.Combine(sharedDirectory, "definitions.json");
+                    await File.WriteAllTextAsync(definitionsPath, """
+                        {
+                          "$defs": {
+                            "title": {
+                              "type": "string",
+                              "minLength": 3
+                            }
+                          }
+                        }
+                        """);
+
+                    var schema = """
+                        {
+                          "type": "object",
+                          "properties": {
+                            "title": {
+                              "$ref": "../shared/definitions.json#/$defs/title"
+                            }
+                          }
+                        }
+                        """;
+
+                    var handler = new MockHttpMessageHandler(async request =>
+                    {
+                        return new HttpResponseMessage
+                        {
+                            StatusCode = System.Net.HttpStatusCode.OK,
+                            Content = new StringContent(@"{""type"": ""object""}")
+                        };
+                    });
+
+                    using var httpClient = new HttpClient(handler);
+                    var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+                    var resolver = new ReferenceResolver(_loggerMock.Object, loader);
+
+                    var rootDoc = JsonNode.Parse(schema);
+                    var rootSchemaPath = Path.Combine(schemasDirectory, "service.json");
+                    resolver.Initialize(rootDoc, rootSchemaPath);
+
+                    var result = await resolver.ResolveAllRefsAsync(rootDoc, new HashSet<string>());
+
+                    Assert.That(result, Is.Not.Null);
+                    var properties = result!["properties"]!.AsObject();
+                    var titleSchema = properties["title"]!.AsObject();
+
+                    Assert.That(titleSchema["type"]!.GetValue<string>(), Is.EqualTo("string"));
+                    Assert.That(titleSchema["minLength"]!.GetValue<int>(), Is.EqualTo(3));
+                }
+                finally
+                {
+                    if (Directory.Exists(tempDirectory))
+                    {
+                        Directory.Delete(tempDirectory, recursive: true);
+                    }
+                }
+            }
+
+            [Test]
+            public async Task ResolveAllRefsAsync_WithLocalCrossFileCircularReference_BreaksLoop()
+            {
+                var tempDirectory = Path.Combine(Path.GetTempPath(), $"openreferral-ref-{Guid.NewGuid():N}");
+                var nestedDirectory = Path.Combine(tempDirectory, "nested");
+                Directory.CreateDirectory(nestedDirectory);
+
+                try
+                {
+                    var aPath = Path.Combine(tempDirectory, "A.json");
+                    var bPath = Path.Combine(nestedDirectory, "B.json");
+
+                    await File.WriteAllTextAsync(aPath, """
+                        {
+                          "type": "object",
+                          "properties": {
+                            "b": {
+                              "$ref": "./nested/B.json"
+                            }
+                          }
+                        }
+                        """);
+
+                    await File.WriteAllTextAsync(bPath, """
+                        {
+                          "type": "object",
+                          "properties": {
+                            "a": {
+                              "$ref": "../A.json"
+                            }
+                          }
+                        }
+                        """);
+
+                    var schema = """
+                        {
+                          "type": "object",
+                          "properties": {
+                            "entry": {
+                              "$ref": "./A.json"
+                            }
+                          }
+                        }
+                        """;
+
+                    var handler = new MockHttpMessageHandler(async request =>
+                    {
+                        return new HttpResponseMessage
+                        {
+                            StatusCode = System.Net.HttpStatusCode.OK,
+                            Content = new StringContent(@"{""type"": ""object""}")
+                        };
+                    });
+
+                    using var httpClient = new HttpClient(handler);
+                    var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+                    var resolver = new ReferenceResolver(_loggerMock.Object, loader);
+
+                    var rootDoc = JsonNode.Parse(schema);
+                    var rootSchemaPath = Path.Combine(tempDirectory, "service.json");
+                    resolver.Initialize(rootDoc, rootSchemaPath);
+
+                    var result = await resolver.ResolveAllRefsAsync(rootDoc, new HashSet<string>());
+
+                    Assert.That(result, Is.Not.Null);
+                    var entrySchema = result!["properties"]!["entry"]!.AsObject();
+                    Assert.That(entrySchema["type"]!.GetValue<string>(), Is.EqualTo("object"));
+
+                    var bSchema = entrySchema["properties"]!["b"]!.AsObject();
+                    Assert.That(bSchema["type"]!.GetValue<string>(), Is.EqualTo("object"));
+
+                    var aBackRef = bSchema["properties"]!["a"]!.AsObject();
+                    Assert.That(aBackRef.ContainsKey("$ref"), Is.True, "Circular local ref should be preserved as $ref");
+                    Assert.That(aBackRef["$ref"]!.GetValue<string>(), Is.EqualTo("../A.json"));
+                }
+                finally
+                {
+                    if (Directory.Exists(tempDirectory))
+                    {
+                        Directory.Delete(tempDirectory, recursive: true);
+                    }
+                }
+            }
+
+            [Test]
+            public async Task ResolveAllRefsAsync_WithPathNormalizedCircularReference_BreaksLoop()
+            {
+                // Arrange - A and B reference each other using path-normalized equivalents
+                // ./A.json and nested/../A.json both resolve to the same file
+                var tempDirectory = Path.Combine(Path.GetTempPath(), $"openreferral-ref-{Guid.NewGuid():N}");
+                var nestedDirectory = Path.Combine(tempDirectory, "nested");
+                Directory.CreateDirectory(nestedDirectory);
+
+                try
+                {
+                    var aPath = Path.Combine(tempDirectory, "A.json");
+                    var bPath = Path.Combine(tempDirectory, "B.json");
+
+                    // A.json references B.json using ./B.json
+                    await File.WriteAllTextAsync(aPath, """
+                        {
+                          "type": "object",
+                          "properties": {
+                            "b": {
+                              "$ref": "./B.json"
+                            }
+                          }
+                        }
+                        """);
+
+                    // B.json references A.json using nested/../A.json (which normalizes to ./A.json)
+                    await File.WriteAllTextAsync(bPath, """
+                        {
+                          "type": "object",
+                          "properties": {
+                            "a": {
+                              "$ref": "nested/../A.json"
+                            }
+                          }
+                        }
+                        """);
+
+                    var schema = """
+                        {
+                          "type": "object",
+                          "properties": {
+                            "entry": {
+                              "$ref": "./A.json"
+                            }
+                          }
+                        }
+                        """;
+
+                    var handler = new MockHttpMessageHandler(async request =>
+                    {
+                        return new HttpResponseMessage
+                        {
+                            StatusCode = System.Net.HttpStatusCode.OK,
+                            Content = new StringContent(@"{""type"": ""object""}")
+                        };
+                    });
+
+                    using var httpClient = new HttpClient(handler);
+                    var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+                    var resolver = new ReferenceResolver(_loggerMock.Object, loader);
+
+                    var rootDoc = JsonNode.Parse(schema);
+                    var rootSchemaPath = Path.Combine(tempDirectory, "service.json");
+                    resolver.Initialize(rootDoc, rootSchemaPath);
+
+                    var result = await resolver.ResolveAllRefsAsync(rootDoc, new HashSet<string>());
+
+                    // Assert
+                    Assert.That(result, Is.Not.Null);
+                    var entrySchema = result!["properties"]!["entry"]!.AsObject();
+                    Assert.That(entrySchema["type"]!.GetValue<string>(), Is.EqualTo("object"));
+
+                    // Verify B.json was resolved
+                    var bSchema = entrySchema["properties"]!["b"]!.AsObject();
+                    Assert.That(bSchema["type"]!.GetValue<string>(), Is.EqualTo("object"));
+
+                    // Verify the circular reference back to A.json is preserved as $ref
+                    // The path normalization should detect that nested/../A.json and ./A.json are the same
+                    var aBackRef = bSchema["properties"]!["a"]!.AsObject();
+                    Assert.That(aBackRef.ContainsKey("$ref"), Is.True, 
+                        "Circular local ref should be preserved as $ref even with path-normalized equivalent");
+                    Assert.That(aBackRef["$ref"]!.GetValue<string>(), Is.EqualTo("nested/../A.json"));
+                }
+                finally
+                {
+                    if (Directory.Exists(tempDirectory))
+                    {
+                        Directory.Delete(tempDirectory, recursive: true);
+                    }
+                }
+            }
+
     #endregion
 
     #region AllOf Merging Tests
