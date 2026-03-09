@@ -11,6 +11,7 @@ using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 using OpenReferralApi.HealthChecks;
 using OpenReferralApi.Middleware;
+using OpenReferralApi.Services;
 using OpenReferralApi.Telemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -31,6 +32,9 @@ builder.Services.Configure<SpecificationOptions>(
 
 builder.Services.Configure<CacheOptions>(
     builder.Configuration.GetSection(CacheOptions.SectionName));
+
+builder.Services.Configure<SchemaWarmupOptions>(
+    builder.Configuration.GetSection(SchemaWarmupOptions.SectionName));
 
 builder.Services.Configure<AuthenticationOptions>(
     builder.Configuration.GetSection(AuthenticationOptions.SectionName));
@@ -181,9 +185,12 @@ healthChecksBuilder.AddCheck<FeedValidationHealthCheck>(
 // Services
 builder.Services.AddScoped<IPathParsingService, PathParsingService>();
 builder.Services.AddSingleton<IRequestProcessingService, RequestProcessingService>();
+builder.Services.AddSingleton<ISchemaWarmupStatusTracker, SchemaWarmupStatusTracker>();
+builder.Services.AddSingleton<ISchemaWarmupStatusProvider>(sp => sp.GetRequiredService<ISchemaWarmupStatusTracker>());
 
 // Schema Resolver Service - resolves $ref in remote schema files and creates JSchema objects
 builder.Services.AddScoped<ISchemaResolverService, SchemaResolverService>();
+builder.Services.AddHostedService<OpenReferralApi.Services.SchemaWarmupBackgroundService>();
 
 builder.Services.AddScoped<IJsonValidatorService, JsonValidatorService>();
 builder.Services.AddScoped<IOpenApiValidationService, OpenApiValidationService>();
@@ -314,11 +321,14 @@ app.MapHealthChecks("/health-check/live", new HealthCheckOptions
     Predicate = _ => false,
     ResponseWriter = async (context, _) =>
     {
+        var warmupStatus = context.RequestServices.GetRequiredService<ISchemaWarmupStatusProvider>().GetSnapshot();
+
         context.Response.ContentType = "application/json";
         await context.Response.WriteAsync(JsonSerializer.Serialize(new
         {
             status = "Healthy",
-            timestamp = DateTime.UtcNow
+            timestamp = DateTime.UtcNow,
+            schemaWarmup = warmupStatus
         }));
     }
 });
