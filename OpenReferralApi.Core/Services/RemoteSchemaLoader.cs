@@ -13,6 +13,18 @@ namespace OpenReferralApi.Core.Services;
 /// </summary>
 internal class RemoteSchemaLoader
 {
+    private static readonly HashSet<string> KnownJsonSchemaUrls = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "https://json-schema.org/draft/2020-12/schema",
+        "https://json-schema.org/draft/2020-12/meta/core",
+        "https://json-schema.org/draft/2020-12/meta/applicator",
+        "https://json-schema.org/draft/2020-12/meta/unevaluated",
+        "https://json-schema.org/draft/2020-12/meta/validation",
+        "https://json-schema.org/draft/2020-12/meta/meta-data",
+        "https://json-schema.org/draft/2020-12/meta/format-annotation",
+        "https://json-schema.org/draft/2020-12/meta/content"
+    };
+
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private readonly IMemoryCache _memoryCache;
@@ -47,8 +59,10 @@ internal class RemoteSchemaLoader
     /// </summary>
     public async Task<JsonNode?> LoadRemoteSchemaAsync(string schemaUrl)
     {
+        var normalizedKnownSchemaUrl = NormalizeKnownSchemaUrl(schemaUrl);
+
         // Rewrite URL if needed (e.g., redirect openreferraluk.org URLs to local server)
-        var rewrittenUrl = RewriteSchemaUrl(schemaUrl);
+        var rewrittenUrl = normalizedKnownSchemaUrl ?? RewriteSchemaUrl(schemaUrl);
         
         // Check persistent cache first if caching is enabled
         if (_cacheOptions.Enabled)
@@ -252,5 +266,21 @@ internal class RemoteSchemaLoader
         }
 
         return schemaUrl;
+    }
+
+    private static string? NormalizeKnownSchemaUrl(string schemaUrl)
+    {
+        if (!Uri.TryCreate(schemaUrl, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        var normalized = uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
+        if (KnownJsonSchemaUrls.Contains(normalized))
+        {
+            return normalized;
+        }
+
+        return null;
     }
 }
