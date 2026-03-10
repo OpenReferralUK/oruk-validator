@@ -78,6 +78,15 @@ internal class ReferenceResolver
                 {
                     // Resolve internal JSON pointer reference
                     resolved = await ResolveInternalRefAsync(refString, visitedRefs);
+                    
+                    // If internal reference resolution failed (returned null), keep the original $ref
+                    // This prevents null values from being inserted into schema structures like allOf arrays
+                    // where Newtonsoft.Json.Schema cannot handle them
+                    if (resolved == null)
+                    {
+                        _logger.LogDebug("Could not resolve internal reference {Ref}, keeping as-is", refString);
+                        return obj.DeepClone();
+                    }
                 }
                 else if (IsLocalSchemaRef(refString))
                 {
@@ -142,6 +151,11 @@ internal class ReferenceResolver
             return null;
         }
 
+        if (refPointer == "#")
+        {
+            return await ResolveAllRefsAsync(_rootDocument, visitedRefs);
+        }
+
         // Check for circular references
         if (visitedRefs.Contains(refPointer))
         {
@@ -159,42 +173,64 @@ internal class ReferenceResolver
 
         try
         {
-            var pointer = refPointer.TrimStart('#', '/');
-            var parts = pointer.Split('/');
+            JsonNode? current;
 
-            JsonNode? current = _rootDocument;
-            foreach (var part in parts)
+            // JSON Pointer (RFC 6901)
+            if (refPointer.StartsWith("#/", StringComparison.Ordinal))
             {
-                if (string.IsNullOrEmpty(part))
-                {
-                    continue;
-                }
+                var pointer = refPointer.TrimStart('#', '/');
+                var parts = pointer.Split('/');
 
-                var unescapedPart = UnescapeJsonPointer(part);
-
-                if (current is JsonObject jsonObj)
+                current = _rootDocument;
+                foreach (var part in parts)
                 {
-                    if (!jsonObj.TryGetPropertyValue(unescapedPart, out current) || current == null)
+                    if (string.IsNullOrEmpty(part))
                     {
-                        _logger.LogWarning("Failed to resolve internal reference path: {Ref} at part: {Part}", refPointer, unescapedPart);
-                        return null;
+                        continue;
                     }
-                }
-                else if (current is JsonArray jsonArr)
-                {
-                    if (int.TryParse(unescapedPart, out var index) && index >= 0 && index < jsonArr.Count)
+
+                    var unescapedPart = UnescapeJsonPointer(part);
+
+                    if (current is JsonObject jsonObj)
                     {
-                        current = jsonArr[index];
+                        if (!jsonObj.TryGetPropertyValue(unescapedPart, out current) || current == null)
+                        {
+                            _logger.LogWarning("Failed to resolve internal reference path: {Ref} at part: {Part}", refPointer, unescapedPart);
+                            return null;
+                        }
+                    }
+                    else if (current is JsonArray jsonArr)
+                    {
+                        if (int.TryParse(unescapedPart, out var index) && index >= 0 && index < jsonArr.Count)
+                        {
+                            current = jsonArr[index];
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Invalid array index in reference: {Ref} at part: {Part}", refPointer, unescapedPart);
+                            return null;
+                        }
                     }
                     else
                     {
-                        _logger.LogWarning("Invalid array index in reference: {Ref} at part: {Part}", refPointer, unescapedPart);
+                        _logger.LogWarning("Cannot navigate through non-object/non-array in reference: {Ref}", refPointer);
                         return null;
                     }
                 }
-                else
+            }
+            else
+            {
+                // Anchor fragment (e.g. #meta). Supports $anchor and $dynamicAnchor.
+                var anchorName = refPointer.TrimStart('#');
+                if (string.IsNullOrWhiteSpace(anchorName))
                 {
-                    _logger.LogWarning("Cannot navigate through non-object/non-array in reference: {Ref}", refPointer);
+                    return null;
+                }
+
+                current = FindAnchorNode(_rootDocument, anchorName);
+                if (current == null)
+                {
+                    _logger.LogWarning("Failed to resolve internal anchor reference: {Ref}", refPointer);
                     return null;
                 }
             }
@@ -342,7 +378,60 @@ internal class ReferenceResolver
     /// </summary>
     private static bool IsInternalRef(string refString)
     {
-        return refString.StartsWith("#/", StringComparison.Ordinal);
+        return refString.StartsWith("#", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Finds a node by JSON Schema anchor name ($anchor or $dynamicAnchor).
+    /// </summary>
+    private static JsonNode? FindAnchorNode(JsonNode? node, string anchorName)
+    {
+        if (node == null)
+        {
+            return null;
+        }
+
+        if (node is JsonObject jsonObject)
+        {
+            if (HasMatchingAnchor(jsonObject, "$anchor", anchorName) ||
+                HasMatchingAnchor(jsonObject, "$dynamicAnchor", anchorName))
+            {
+                return jsonObject;
+            }
+
+            foreach (var kvp in jsonObject)
+            {
+                var found = FindAnchorNode(kvp.Value, anchorName);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+        }
+        else if (node is JsonArray jsonArray)
+        {
+            foreach (var item in jsonArray)
+            {
+                var found = FindAnchorNode(item, anchorName);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static bool HasMatchingAnchor(JsonObject node, string propertyName, string anchorName)
+    {
+        if (!node.TryGetPropertyValue(propertyName, out var anchorNode) ||
+            anchorNode is not JsonValue anchorValue)
+        {
+            return false;
+        }
+
+        return string.Equals(anchorValue.GetValue<string>(), anchorName, StringComparison.Ordinal);
     }
 
     /// <summary>
