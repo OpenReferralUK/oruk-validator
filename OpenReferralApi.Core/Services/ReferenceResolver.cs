@@ -220,17 +220,18 @@ internal class ReferenceResolver
             }
             else
             {
-                // Anchor fragment (e.g. #meta). Supports $anchor and $dynamicAnchor.
-                var anchorName = refPointer.TrimStart('#');
-                if (string.IsNullOrWhiteSpace(anchorName))
+                // Non-pointer fragment (e.g. #meta or #uuid_reference). Support JSON Schema anchors
+                // as well as named definitions in shared files referenced as definitions.json#name.
+                var fragmentName = refPointer.TrimStart('#');
+                if (string.IsNullOrWhiteSpace(fragmentName))
                 {
                     return null;
                 }
 
-                current = FindAnchorNode(_rootDocument, anchorName);
+                current = FindFragmentNode(_rootDocument, fragmentName);
                 if (current == null)
                 {
-                    _logger.LogWarning("Failed to resolve internal anchor reference: {Ref}", refPointer);
+                    _logger.LogWarning("Failed to resolve internal fragment reference: {Ref}", refPointer);
                     return null;
                 }
             }
@@ -382,6 +383,14 @@ internal class ReferenceResolver
     }
 
     /// <summary>
+    /// Finds a node for a non-pointer fragment. Supports JSON Schema anchors and named definitions.
+    /// </summary>
+    private static JsonNode? FindFragmentNode(JsonNode? node, string fragmentName)
+    {
+        return FindAnchorNode(node, fragmentName) ?? FindDefinitionNode(node, fragmentName);
+    }
+
+    /// <summary>
     /// Finds a node by JSON Schema anchor name ($anchor or $dynamicAnchor).
     /// </summary>
     private static JsonNode? FindAnchorNode(JsonNode? node, string anchorName)
@@ -421,6 +430,39 @@ internal class ReferenceResolver
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Finds a definition node by fragment name, supporting $defs, definitions, and direct properties.
+    /// </summary>
+    private static JsonNode? FindDefinitionNode(JsonNode? node, string fragmentName)
+    {
+        if (node is not JsonObject jsonObject)
+        {
+            return null;
+        }
+
+        if (TryGetObjectProperty(jsonObject, "$defs", fragmentName, out var defsMatch) ||
+            TryGetObjectProperty(jsonObject, "definitions", fragmentName, out defsMatch) ||
+            jsonObject.TryGetPropertyValue(fragmentName, out defsMatch))
+        {
+            return defsMatch;
+        }
+
+        return null;
+    }
+
+    private static bool TryGetObjectProperty(JsonObject parent, string containerPropertyName, string propertyName, out JsonNode? value)
+    {
+        value = null;
+
+        if (!parent.TryGetPropertyValue(containerPropertyName, out var container) ||
+            container is not JsonObject containerObject)
+        {
+            return false;
+        }
+
+        return containerObject.TryGetPropertyValue(propertyName, out value);
     }
 
     private static bool HasMatchingAnchor(JsonObject node, string propertyName, string anchorName)

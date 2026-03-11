@@ -674,6 +674,74 @@ public class ReferenceResolverTests
         }
 
             [Test]
+            public async Task ResolveAllRefsAsync_WithNamedDefinitionFragment_ResolvesCorrectly()
+            {
+                var tempDirectory = Path.Combine(Path.GetTempPath(), $"openreferral-ref-{Guid.NewGuid():N}");
+                Directory.CreateDirectory(tempDirectory);
+
+                try
+                {
+                    var definitionsPath = Path.Combine(tempDirectory, "definitions.json");
+                    await File.WriteAllTextAsync(definitionsPath, """
+                        {
+                            "$defs": {
+                            "uuid_reference": {
+                                "type": "string",
+                                "format": "uuid",
+                                "title": "Identifier Reference"
+                            }
+                            }
+                        }
+                        """);
+
+                    var schema = """
+                        {
+                            "type": "object",
+                            "properties": {
+                            "taxonomy_id": {
+                                "$ref": "./definitions.json#uuid_reference"
+                            }
+                            }
+                        }
+                        """;
+
+                    var handler = new MockHttpMessageHandler(async request =>
+                    {
+                        return new HttpResponseMessage
+                        {
+                            StatusCode = System.Net.HttpStatusCode.OK,
+                            Content = new StringContent(@"{""type"": ""object""}")
+                        };
+                    });
+
+                    using var httpClient = new HttpClient(handler);
+                    var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+                    var resolver = new ReferenceResolver(_loggerMock.Object, loader);
+
+                    var rootDoc = JsonNode.Parse(schema);
+                    var rootSchemaPath = Path.Combine(tempDirectory, "service.json");
+                    resolver.Initialize(rootDoc, rootSchemaPath);
+
+                    var result = await resolver.ResolveAllRefsAsync(rootDoc, new HashSet<string>());
+
+                    Assert.That(result, Is.Not.Null);
+                    var properties = result!["properties"]!.AsObject();
+                    var taxonomyIdSchema = properties["taxonomy_id"]!.AsObject();
+
+                    Assert.That(taxonomyIdSchema["type"]!.GetValue<string>(), Is.EqualTo("string"));
+                    Assert.That(taxonomyIdSchema["format"]!.GetValue<string>(), Is.EqualTo("uuid"));
+                    Assert.That(taxonomyIdSchema["title"]!.GetValue<string>(), Is.EqualTo("Identifier Reference"));
+                }
+                finally
+                {
+                    if (Directory.Exists(tempDirectory))
+                    {
+                        Directory.Delete(tempDirectory, recursive: true);
+                    }
+                }
+            }
+
+            [Test]
             public async Task ResolveAllRefsAsync_WithMissingRelativeLocalFileRef_ReturnsNullAndKeepsParentStable()
             {
                 var tempDirectory = Path.Combine(Path.GetTempPath(), $"openreferral-ref-{Guid.NewGuid():N}");
