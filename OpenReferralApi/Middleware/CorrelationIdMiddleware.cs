@@ -1,3 +1,5 @@
+using Serilog.Context;
+
 namespace OpenReferralApi.Middleware;
 
 /// <summary>
@@ -21,6 +23,9 @@ public class CorrelationIdMiddleware
         context.Items["CorrelationId"] = correlationId;
         context.Response.Headers.TryAdd(CorrelationIdHeader, correlationId);
 
-        await _next(context);
+        using (LogContext.PushProperty("CorrelationId", correlationId))
+        {
+            await _next(context);
+        }
     }
 }
