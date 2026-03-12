@@ -39,8 +39,8 @@ public class SemanticDataAuditServiceTests
         Assert.That(result.TotalServices, Is.EqualTo(1));
         Assert.That(result.FlaggedServices, Is.EqualTo(1));
         Assert.That(result.Findings, Has.Count.EqualTo(1));
-        Assert.That(result.Findings[0].IsMismatch, Is.True);
-        Assert.That(result.Findings[0].SuggestedTaxonomyTerm, Is.EqualTo("Food Bank"));
+        Assert.That(result.Findings[0].Issues, Has.Count.GreaterThan(0));
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "taxonomy_mismatch"), Is.True);
     }
 
     [Test]
@@ -60,7 +60,9 @@ public class SemanticDataAuditServiceTests
                     ServiceId = "svc-2",
                     ServiceName = "Tenant Rights Clinic",
                     ServiceDescription = "Free legal advice about housing law, eviction notices and tribunal representation.",
-                    TaxonomyTerm = "Legal Aid"
+                    TaxonomyTerm = "Legal Aid",
+                    Emails = new List<string> { "contact@example.org" },
+                    Urls = new List<string> { "https://example.org/tenant-rights" }
                 }
             }
         };
@@ -69,7 +71,7 @@ public class SemanticDataAuditServiceTests
 
         Assert.That(result.TotalServices, Is.EqualTo(1));
         Assert.That(result.FlaggedServices, Is.EqualTo(0));
-        Assert.That(result.Findings[0].IsMismatch, Is.False);
+        Assert.That(result.Findings[0].Issues, Is.Empty);
     }
 
     [Test]
@@ -124,10 +126,18 @@ public class SemanticDataAuditServiceTests
             true,
             (_, _, _) => Task.FromResult<SemanticAuditAgentEvaluation?>(new SemanticAuditAgentEvaluation
             {
-                IsMismatch = true,
-                Confidence = 0.92,
-                SuggestedTaxonomyTerm = "Food Bank",
-                Reason = "Description indicates food support, not legal services."
+                Issues = new List<FeedAuditIssue>
+                {
+                    new()
+                    {
+                        IssueType = "taxonomy_mismatch",
+                        Severity = "warning",
+                        AffectedField = "taxonomy_terms",
+                        Description = "Description indicates food support, not legal services.",
+                        Suggestion = "Use Food Bank taxonomy term.",
+                        Confidence = 0.92
+                    }
+                }
             })));
 
         var request = new SemanticDataAuditRequest
@@ -140,7 +150,37 @@ public class SemanticDataAuditServiceTests
         Assert.That(result.TotalServices, Is.EqualTo(1));
         Assert.That(result.FlaggedServices, Is.EqualTo(1));
         Assert.That(result.AuditEngine, Is.EqualTo("microsoft-agent-framework"));
-        Assert.That(result.Findings[0].SuggestedTaxonomyTerm, Is.EqualTo("Food Bank"));
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "taxonomy_mismatch"), Is.True);
+    }
+
+    [Test]
+    public async Task AuditAsync_FlagsMissingContactAndInvalidEmail()
+    {
+        var service = CreateService(
+            new StubHttpMessageHandler(_ => throw new InvalidOperationException("HTTP should not be called for direct service list mode.")),
+            new StubSemanticAuditAgentService(false, (_, _, _) => Task.FromResult<SemanticAuditAgentEvaluation?>(null)));
+
+        var request = new SemanticDataAuditRequest
+        {
+            Services = new List<SemanticAuditServiceRecord>
+            {
+                new()
+                {
+                    ServiceId = "svc-3",
+                    ServiceName = "Local Support Hub",
+                    ServiceDescription = "Help",
+                    TaxonomyTerm = "Housing Advice",
+                    Emails = new List<string> { "not-an-email" }
+                }
+            }
+        };
+
+        var result = await service.AuditAsync(request);
+
+        Assert.That(result.FlaggedServices, Is.EqualTo(1));
+        Assert.That(result.TotalIssues, Is.GreaterThanOrEqualTo(2));
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "invalid_data" && x.AffectedField == "email"), Is.True);
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "poor_description"), Is.True);
     }
 
     private static SemanticDataAuditService CreateService(HttpMessageHandler handler, ISemanticAuditAgentService agentService)

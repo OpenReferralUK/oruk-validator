@@ -1,10 +1,11 @@
+using Azure;
+using Azure.AI.OpenAI;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Agents;
-using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Newtonsoft.Json.Linq;
+using OpenAI;
 using OpenReferralApi.Core.Models;
 
 namespace OpenReferralApi.Core.Services;
@@ -48,19 +49,19 @@ public class SemanticAuditAgentService : ISemanticAuditAgentService
             return null;
         }
 
-        var kernel = BuildKernel();
-        var agent = BuildAgent(kernel);
-        var thread = new ChatHistoryAgentThread();
-        var message = new ChatMessageContent(AuthorRole.User, BuildPrompt(service, candidateTerms));
-
-        string? content = null;
-        await foreach (ChatMessageContent response in agent.InvokeAsync(message, thread, cancellationToken: cancellationToken))
+        var agent = BuildAgent();
+        var runOptions = new ChatClientAgentRunOptions(new Microsoft.Extensions.AI.ChatOptions
         {
-            if (!string.IsNullOrWhiteSpace(response.Content))
-            {
-                content = response.Content;
-            }
-        }
+            Temperature = (float)_llmOptions.Temperature,
+            MaxOutputTokens = _llmOptions.MaxTokens
+        });
+
+        var response = await agent.RunAsync(
+            BuildPrompt(service, candidateTerms),
+            options: runOptions,
+            cancellationToken: cancellationToken);
+
+        var content = response.Text;
 
         if (string.IsNullOrWhiteSpace(content))
         {
@@ -74,71 +75,78 @@ public class SemanticAuditAgentService : ISemanticAuditAgentService
             return null;
         }
 
-        var confidence = payload["confidence"]?.Value<double?>() ?? 0;
-
-        return new SemanticAuditAgentEvaluation
+        var issuesArray = payload["issues"] as JArray;
+        if (issuesArray == null)
         {
-            IsMismatch = payload["isMismatch"]?.Value<bool?>() ?? false,
-            Confidence = Math.Clamp(confidence, 0, 1),
-            SuggestedTaxonomyTerm = payload["suggestedTaxonomyTerm"]?.ToString(),
-            Reason = payload["reason"]?.ToString() ?? "Agent completed classification."
-        };
+            _logger.LogWarning("Semantic audit agent response missing 'issues' array.");
+            return null;
+        }
+
+        var issues = issuesArray.OfType<JObject>().Select(issue => new FeedAuditIssue
+        {
+            IssueType = issue["issueType"]?.ToString() ?? "unknown",
+            Severity = issue["severity"]?.ToString() ?? "warning",
+            AffectedField = issue["affectedField"]?.ToString(),
+            Description = issue["description"]?.ToString() ?? string.Empty,
+            Suggestion = issue["suggestion"]?.ToString(),
+            Confidence = Math.Clamp(issue["confidence"]?.Value<double?>() ?? 0, 0, 1)
+        }).ToList();
+
+        return new SemanticAuditAgentEvaluation { Issues = issues };
     }
 
-    private ChatCompletionAgent BuildAgent(Kernel kernel)
+    private AIAgent BuildAgent()
     {
-        return new ChatCompletionAgent
-        {
-            Name = "SemanticTaxonomyAuditAgent",
-            Instructions = "You are a data quality agent for Open Referral taxonomy auditing. Return strict JSON only.",
-            Kernel = kernel,
-            Arguments = BuildAgentArguments()
-        };
-    }
-
-    private Kernel BuildKernel()
-    {
-        var builder = Kernel.CreateBuilder();
+        const string name = "FeedDataAuditorAgent";
+        const string instructions = "You are a data auditor. Use the provided tools to verify if the data makes sense. Do not add conversational filler.";
         var provider = _llmOptions.Provider.Trim();
 
         if (string.Equals(provider, "AzureOpenAI", StringComparison.OrdinalIgnoreCase))
         {
-            builder.AddAzureOpenAIChatCompletion(
-                deploymentName: _llmOptions.DeploymentOrModel,
-                endpoint: _llmOptions.Endpoint,
-                apiKey: _llmOptions.ApiKey);
-        }
-        else
-        {
-            builder.AddOpenAIChatCompletion(
-                modelId: _llmOptions.DeploymentOrModel,
-                apiKey: _llmOptions.ApiKey);
+            return new AzureOpenAIClient(
+                    new Uri(_llmOptions.Endpoint),
+                    new AzureKeyCredential(_llmOptions.ApiKey))
+                .GetChatClient(_llmOptions.DeploymentOrModel)
+                .AsIChatClient()
+                .AsAIAgent(name: name, instructions: instructions);
         }
 
-        return builder.Build();
-    }
-
-    private KernelArguments BuildAgentArguments()
-    {
-        return new KernelArguments(new OpenAIPromptExecutionSettings
-        {
-            Temperature = _llmOptions.Temperature,
-            MaxTokens = _llmOptions.MaxTokens
-        });
+        return new OpenAIClient(_llmOptions.ApiKey)
+            .GetChatClient(_llmOptions.DeploymentOrModel)
+            .AsIChatClient()
+            .AsAIAgent(name: name, instructions: instructions);
     }
 
     private static string BuildPrompt(SemanticAuditServiceRecord service, IReadOnlyCollection<string> candidateTerms)
     {
+        var taxonomyTerms = service.TaxonomyTerms.Count > 0
+            ? string.Join(", ", service.TaxonomyTerms)
+            : service.TaxonomyTerm;
         var candidates = string.Join(", ", candidateTerms.Where(x => !string.IsNullOrWhiteSpace(x)).Take(30));
+        var phones = string.Join(", ", service.PhoneNumbers);
+        var emails = string.Join(", ", service.Emails);
+        var urls = string.Join(", ", service.Urls);
 
         return $"""
-Evaluate whether the assigned taxonomy term matches this service description.
-Return strict JSON with keys: isMismatch (bool), confidence (0-1), suggestedTaxonomyTerm (string or null), reason (string).
+Audit this Open Referral service record for data quality issues.
+Return ONLY a JSON object with key "issues" containing an array of issues.
+
+Each issue must have:
+  issueType (string): taxonomy_mismatch | missing_contact | poor_description | inconsistent_name | data_inconsistency | invalid_data
+  severity (string): "error" | "warning" | "info"
+  affectedField (string): field with the issue
+  description (string): concise problem description
+  suggestion (string or null): recommended fix
+  confidence (number 0-1)
 
 ServiceId: {service.ServiceId}
 ServiceName: {service.ServiceName}
-AssignedTaxonomyTerm: {service.TaxonomyTerm}
-ServiceDescription: {service.ServiceDescription}
+Description: {service.ServiceDescription}
+TaxonomyTerms: [{taxonomyTerms}]
+PhoneNumbers: [{phones}]
+Emails: [{emails}]
+Urls: [{urls}]
+Address: {service.Address}
 CandidateTaxonomyTerms: [{candidates}]
 """;
     }

@@ -15,6 +15,8 @@ public interface ISemanticDataAuditService
 public class SemanticDataAuditService : ISemanticDataAuditService
 {
     private static readonly Regex TokenRegex = new("[a-z0-9]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex EmailRegex = new("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex UrlRegex = new("^https?://", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Dictionary<string, string[]> TaxonomyKeywordMap = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -72,7 +74,8 @@ public class SemanticDataAuditService : ISemanticDataAuditService
         var response = new SemanticDataAuditResponse
         {
             TotalServices = findings.Count,
-            FlaggedServices = findings.Count(x => x.IsMismatch),
+            FlaggedServices = findings.Count(x => x.HasIssues),
+            TotalIssues = findings.Sum(x => x.Issues.Count),
             AuditEngine = engine,
             DataSourceBaseUrl = request.SourceBaseUrl,
             Findings = findings
@@ -117,29 +120,23 @@ public class SemanticDataAuditService : ISemanticDataAuditService
 
             var name = service["name"]?.ToString();
             var taxonomyTerms = ExtractServiceTaxonomyTerms(service, taxonomyById);
+            var emails = ExtractEmailValues(service);
+            var urls = ExtractUrlValues(service);
+            var phoneNumbers = ExtractPhoneValues(service);
+            var address = ExtractAddress(service);
 
-            if (taxonomyTerms.Count == 0)
+            records.Add(new SemanticAuditServiceRecord
             {
-                records.Add(new SemanticAuditServiceRecord
-                {
-                    ServiceId = id,
-                    ServiceName = name,
-                    ServiceDescription = description,
-                    TaxonomyTerm = "Unspecified"
-                });
-                continue;
-            }
-
-            foreach (var taxonomyTerm in taxonomyTerms)
-            {
-                records.Add(new SemanticAuditServiceRecord
-                {
-                    ServiceId = id,
-                    ServiceName = name,
-                    ServiceDescription = description,
-                    TaxonomyTerm = taxonomyTerm
-                });
-            }
+                ServiceId = id,
+                ServiceName = name,
+                ServiceDescription = description,
+                TaxonomyTerm = taxonomyTerms.FirstOrDefault() ?? "Unspecified",
+                TaxonomyTerms = taxonomyTerms,
+                Emails = emails,
+                Urls = urls,
+                PhoneNumbers = phoneNumbers,
+                Address = address
+            });
         }
 
         if (records.Count == 0)
@@ -168,19 +165,25 @@ public class SemanticDataAuditService : ISemanticDataAuditService
             {
                 return null;
             }
-
-            var isMismatch = evaluation.IsMismatch && evaluation.Confidence >= threshold;
+            var issues = evaluation.Issues
+                .Where(x => x != null)
+                .Select(issue => new FeedAuditIssue
+                {
+                    IssueType = issue.IssueType,
+                    Severity = issue.Severity,
+                    AffectedField = issue.AffectedField,
+                    Description = issue.Description,
+                    Suggestion = issue.Suggestion,
+                    Confidence = Math.Clamp(issue.Confidence, 0, 1)
+                })
+                .Where(issue => issue.Confidence >= threshold)
+                .ToList();
 
             return new SemanticAuditFinding
             {
                 ServiceId = service.ServiceId,
                 ServiceName = service.ServiceName,
-                TaxonomyTerm = service.TaxonomyTerm,
-                IsMismatch = isMismatch,
-                AssignedTermScore = isMismatch ? Math.Max(0, 1 - evaluation.Confidence) : evaluation.Confidence,
-                SuggestedTaxonomyTerm = isMismatch ? evaluation.SuggestedTaxonomyTerm : null,
-                SuggestedTermScore = isMismatch ? evaluation.Confidence : 0,
-                Reason = evaluation.Reason
+                Issues = issues
             };
         }
         catch (Exception ex)
@@ -195,11 +198,31 @@ public class SemanticDataAuditService : ISemanticDataAuditService
         IReadOnlyCollection<string> candidateTerms,
         double threshold)
     {
+        var issues = BuildHeuristicIssues(service, candidateTerms, threshold);
+
+        return new SemanticAuditFinding
+        {
+            ServiceId = service.ServiceId,
+            ServiceName = service.ServiceName,
+            Issues = issues
+        };
+    }
+
+    private List<FeedAuditIssue> BuildHeuristicIssues(
+        SemanticAuditServiceRecord service,
+        IReadOnlyCollection<string> candidateTerms,
+        double threshold)
+    {
+        var issues = new List<FeedAuditIssue>();
+
         var descriptionTokens = ExtractTokens(service.ServiceDescription);
-        var assignedTermScore = ScoreTerm(service.TaxonomyTerm, descriptionTokens);
+        var assignedTerm = string.IsNullOrWhiteSpace(service.TaxonomyTerm)
+            ? service.TaxonomyTerms.FirstOrDefault() ?? "Unspecified"
+            : service.TaxonomyTerm;
+        var assignedTermScore = ScoreTerm(assignedTerm, descriptionTokens);
 
         var bestAlternative = candidateTerms
-            .Where(t => !string.Equals(t, service.TaxonomyTerm, StringComparison.OrdinalIgnoreCase))
+            .Where(t => !string.Equals(t, assignedTerm, StringComparison.OrdinalIgnoreCase))
             .Select(term => new
             {
                 Term = term,
@@ -211,23 +234,87 @@ public class SemanticDataAuditService : ISemanticDataAuditService
         var bestAlternativeScore = bestAlternative?.Score ?? 0;
         var assignedLooksWeak = assignedTermScore < threshold;
         var alternativeLooksBetter = bestAlternativeScore - assignedTermScore >= _options.MinimumAlternativeGap;
-        var isMismatch = assignedLooksWeak && alternativeLooksBetter;
 
-        var reason = isMismatch
-            ? $"Assigned term '{service.TaxonomyTerm}' scored {assignedTermScore:F2}, while '{bestAlternative?.Term}' scored {bestAlternativeScore:F2}."
-            : $"Assigned term '{service.TaxonomyTerm}' appears semantically consistent (score {assignedTermScore:F2}).";
-
-        return new SemanticAuditFinding
+        if (assignedLooksWeak && alternativeLooksBetter)
         {
-            ServiceId = service.ServiceId,
-            ServiceName = service.ServiceName,
-            TaxonomyTerm = service.TaxonomyTerm,
-            IsMismatch = isMismatch,
-            AssignedTermScore = assignedTermScore,
-            SuggestedTaxonomyTerm = isMismatch ? bestAlternative?.Term : null,
-            SuggestedTermScore = isMismatch ? bestAlternativeScore : 0,
-            Reason = reason
-        };
+            issues.Add(new FeedAuditIssue
+            {
+                IssueType = "taxonomy_mismatch",
+                Severity = "warning",
+                AffectedField = "taxonomy_terms",
+                Description = $"Assigned term '{assignedTerm}' appears weaker than '{bestAlternative?.Term}'.",
+                Suggestion = $"Review taxonomy assignment and consider '{bestAlternative?.Term}'.",
+                Confidence = Math.Clamp(bestAlternativeScore, 0, 1)
+            });
+        }
+
+        if (descriptionTokens.Count < 6)
+        {
+            issues.Add(new FeedAuditIssue
+            {
+                IssueType = "poor_description",
+                Severity = "warning",
+                AffectedField = "description",
+                Description = "Service description is very short and may be unclear for users.",
+                Suggestion = "Add concrete details about eligibility, support offered, and how to access the service.",
+                Confidence = 0.85
+            });
+        }
+
+        var hasContact = service.Emails.Count > 0 || service.PhoneNumbers.Count > 0 || service.Urls.Count > 0;
+        if (!hasContact)
+        {
+            issues.Add(new FeedAuditIssue
+            {
+                IssueType = "missing_contact",
+                Severity = "warning",
+                AffectedField = "contact",
+                Description = "No contact email, phone number, or URL was found.",
+                Suggestion = "Provide at least one contact channel so users can access the service.",
+                Confidence = 0.95
+            });
+        }
+
+        foreach (var email in service.Emails.Where(x => !EmailRegex.IsMatch(x)))
+        {
+            issues.Add(new FeedAuditIssue
+            {
+                IssueType = "invalid_data",
+                Severity = "error",
+                AffectedField = "email",
+                Description = $"Email '{email}' does not look valid.",
+                Suggestion = "Use a standard email format such as name@example.org.",
+                Confidence = 0.98
+            });
+        }
+
+        foreach (var url in service.Urls.Where(x => !UrlRegex.IsMatch(x)))
+        {
+            issues.Add(new FeedAuditIssue
+            {
+                IssueType = "invalid_data",
+                Severity = "error",
+                AffectedField = "url",
+                Description = $"URL '{url}' is missing an http:// or https:// scheme.",
+                Suggestion = "Provide an absolute URL, for example https://example.org/service.",
+                Confidence = 0.98
+            });
+        }
+
+        if (service.PhoneNumbers.Any(x => ExtractTokens(x).Count == 0))
+        {
+            issues.Add(new FeedAuditIssue
+            {
+                IssueType = "invalid_data",
+                Severity = "warning",
+                AffectedField = "phone",
+                Description = "One or more phone numbers are empty or malformed.",
+                Suggestion = "Use internationally recognizable numeric phone values.",
+                Confidence = 0.8
+            });
+        }
+
+        return issues;
     }
 
     private static IReadOnlyCollection<string> BuildCandidateTerms(
@@ -235,7 +322,7 @@ public class SemanticDataAuditService : ISemanticDataAuditService
         SemanticDataAuditRequest request)
     {
         var terms = records
-            .Select(x => x.TaxonomyTerm)
+            .SelectMany(x => x.TaxonomyTerms.Count > 0 ? x.TaxonomyTerms : [x.TaxonomyTerm])
             .Concat(request.TaxonomyTerms)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -471,6 +558,113 @@ public class SemanticDataAuditService : ISemanticDataAuditService
                 else if (!string.IsNullOrWhiteSpace(id) && taxonomyById.TryGetValue(id, out var resolvedName))
                 {
                     result.Add(resolvedName);
+                }
+            }
+        }
+
+        return result
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static List<string> ExtractEmailValues(JObject service)
+    {
+        return ExtractStringValues(service, "email", "organization.email", "contact.email");
+    }
+
+    private static List<string> ExtractUrlValues(JObject service)
+    {
+        return ExtractStringValues(service, "url", "website", "organization.website", "organization.url", "organization.uri");
+    }
+
+    private static List<string> ExtractPhoneValues(JObject service)
+    {
+        var values = new List<string>();
+        values.AddRange(ExtractStringValues(service, "phone", "telephone", "organization.phone"));
+
+        if (service["phones"] is JArray phonesArray)
+        {
+            foreach (var item in phonesArray)
+            {
+                if (item is JValue scalar)
+                {
+                    var phone = scalar.ToString();
+                    if (!string.IsNullOrWhiteSpace(phone))
+                    {
+                        values.Add(phone);
+                    }
+                }
+                else if (item is JObject phoneObj)
+                {
+                    var number = phoneObj["number"]?.ToString() ?? phoneObj["phone"]?.ToString();
+                    if (!string.IsNullOrWhiteSpace(number))
+                    {
+                        values.Add(number);
+                    }
+                }
+            }
+        }
+
+        return values
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string? ExtractAddress(JObject service)
+    {
+        var addressParts = new[]
+        {
+            service["address_1"]?.ToString(),
+            service["address_2"]?.ToString(),
+            service["city"]?.ToString(),
+            service["region"]?.ToString(),
+            service["postal_code"]?.ToString(),
+            service["location"]?["address_1"]?.ToString(),
+            service["location"]?["city"]?.ToString(),
+            service["location"]?["postal_code"]?.ToString()
+        }
+        .Where(x => !string.IsNullOrWhiteSpace(x))
+        .ToList();
+
+        if (addressParts.Count == 0)
+        {
+            return null;
+        }
+
+        return string.Join(", ", addressParts);
+    }
+
+    private static List<string> ExtractStringValues(JObject service, params string[] paths)
+    {
+        var result = new List<string>();
+
+        foreach (var path in paths)
+        {
+            var token = service.SelectToken(path);
+            if (token == null)
+            {
+                continue;
+            }
+
+            if (token is JValue value)
+            {
+                var text = value.ToString();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    result.Add(text);
+                }
+            }
+            else if (token is JArray array)
+            {
+                foreach (var item in array)
+                {
+                    var text = item?.ToString();
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        result.Add(text);
+                    }
                 }
             }
         }

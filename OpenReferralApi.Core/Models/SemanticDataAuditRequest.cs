@@ -55,30 +55,25 @@ public class SemanticDataAuditRequest : IValidatableObject
 }
 
 /// <summary>
-/// A service record containing free-text description and an assigned taxonomy term.
+/// A service record for feed auditing — includes taxonomy, contact, and location data.
 /// </summary>
 public class SemanticAuditServiceRecord
 {
-    /// <summary>
-    /// External service identifier.
-    /// </summary>
+    /// <summary>External service identifier.</summary>
     [Required]
     public string ServiceId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Human-readable service name.
-    /// </summary>
     public string? ServiceName { get; set; }
 
-    /// <summary>
-    /// Free-text service description to classify semantically.
-    /// </summary>
     [Required]
     public string ServiceDescription { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Taxonomy term currently assigned to this service.
-    /// </summary>
-    [Required]
+    /// <summary>Primary taxonomy term (first entry in TaxonomyTerms, or "Unspecified").</summary>
     public string TaxonomyTerm { get; set; } = string.Empty;
+
+    public List<string> TaxonomyTerms { get; set; } = new();
+    public List<string> PhoneNumbers { get; set; } = new();
+    public List<string> Emails { get; set; } = new();
+    public List<string> Urls { get; set; } = new();
+    public string? Address { get; set; }
 }
