@@ -57,6 +57,12 @@ builder.Services.Configure<RateLimitingOptions>(
 builder.Services.Configure<OpenTelemetryOptions>(
     builder.Configuration.GetSection(OpenTelemetryOptions.SectionName));
 
+builder.Services.Configure<SemanticDataAuditOptions>(
+    builder.Configuration.GetSection(SemanticDataAuditOptions.SectionName));
+
+builder.Services.Configure<SemanticDataAuditLlmOptions>(
+    builder.Configuration.GetSection(SemanticDataAuditLlmOptions.SectionName));
+
 // Add services to the container.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -200,6 +206,8 @@ builder.Services.AddScoped<IOpenApiValidationService, OpenApiValidationService>(
 
 builder.Services.AddScoped<IOpenApiDiscoveryService, OpenApiDiscoveryService>();
 builder.Services.AddScoped<IOpenReferralUKValidationResponseMapper, OpenReferralUKValidationResponseMapper>();
+builder.Services.AddScoped<ISemanticAuditAgentService, SemanticAuditAgentService>();
+builder.Services.AddScoped<ISemanticDataAuditService, SemanticDataAuditService>();
 
 // Configure Memory Cache with size limit from cache options
 builder.Services.AddMemoryCache(options =>
