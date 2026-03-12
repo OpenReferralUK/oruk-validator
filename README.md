@@ -30,6 +30,9 @@ This solution provides a comprehensive validation service for Open Referral UK (
 - **Rate Limiting**: Configurable rate limiting to protect against excessive requests
 - **Health Checks**: Kubernetes-ready liveness and readiness probes
 - **OpenTelemetry Integration**: Distributed tracing and metrics for observability
+- **Correlation IDs**: Request/response correlation via `X-Correlation-ID` header
+- **Schema Warmup Status**: Liveness endpoint includes schema warmup progress details
+- **Feed Validation API**: Manual feed validation endpoints for all feeds or a specific feed
 
 ## Technical Architecture
 
@@ -78,6 +81,7 @@ This solution is built as a modern, cloud-native application with the following 
 
 For detailed information about specific components, see:
 
+- [Current state of play](.docs/CURRENT_STATE_OF_PLAY.md)
 - [Technical Architecture](https://github.com/openReferralUK/oruk-validator/wiki/ARCHITECTURE)
 - [Development Setup](https://github.com/openReferralUK/oruk-validator/wiki/DEVELOPMENT-SETUP)
 - [Contributing Guide](https://github.com/openReferralUK/oruk-validator/wiki/CONTRIBUTING)
@@ -87,8 +91,8 @@ For detailed information about specific components, see:
 ### API Documentation
 
 When running locally in development mode, interactive API documentation is available at:
-- **Swagger UI**: `http://localhost:5000/` (or your configured port)
-- **OpenAPI Spec**: `http://localhost:5000/swagger/v1/swagger.json`
+- **Swagger UI**: `http://localhost:6969/` (or your configured port)
+- **OpenAPI Spec**: `http://localhost:6969/swagger/v1/swagger.json`
 
 ### Quick Start
 
@@ -109,7 +113,28 @@ When running locally in development mode, interactive API documentation is avail
    dotnet run --project OpenReferralApi/OpenReferralApi.csproj
    ```
 
-4. **Access Swagger UI**: Open `http://localhost:5000` in your browser
+4. **Access Swagger UI**: Open `http://localhost:6969` in your browser
+
+## Current API Routes
+
+### Validation Endpoints
+
+- `POST /openreferraluk/validate` returns Open Referral UK formatted results
+- `POST /api/openapi/validate` legacy alias for backward compatibility
+- `POST /openreferral/validate` returns raw validation results
+
+### Feed Validation Endpoints
+
+- `GET /api/feedvalidation/feeds` list all registered feeds and status
+- `POST /api/feedvalidation/validate-all` trigger validation for all feeds
+- `POST /api/feedvalidation/validate/{feedId}` trigger validation for one feed
+
+### Health Endpoints
+
+- `GET /health-check` all registered checks
+- `GET /health-check/ready` readiness checks
+- `GET /health-check/overall` deployment/readiness checks
+- `GET /health-check/live` liveness check including `schemaWarmup` status snapshot
 
 ## Authentication
 
@@ -211,10 +236,12 @@ Custom headers must be used as the only configured method in the auth object.
 ### Example: Complete Validation Request with Authentication
 
 ```bash
-curl -X POST http://localhost:5000/api/validate/openapi \
+curl -X POST http://localhost:6969/openreferraluk/validate \
   -H "Content-Type: application/json" \
   -d '{
-    "openApiSchemaUrl": "https://api.example.com/openapi.json",
+    "openApiSchema": {
+      "url": "https://api.example.com/openapi.json"
+    },
     "baseUrl": "https://api.example.com",
     "dataSourceAuth": {
       "bearerToken": "your-jwt-token-here"
