@@ -6,8 +6,6 @@ namespace OpenReferralApi.Controllers;
 
 [ApiController]
 [Route("api/[Controller]")]
-// This hides the entire controller from Swagger UI
-[ApiExplorerSettings(IgnoreApi = true)]
 public class MockController : ControllerBase
 {
     private const string MockPath = "Mocks/V3.0-UK-";
@@ -30,7 +28,7 @@ public class MockController : ControllerBase
             return $"{MockPath}Warn/{fileName}";
         return $"{MockPath}Default/{fileName}";
     }
-    
+
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 API details GET / endpoint  
     /// </summary>
@@ -46,7 +44,7 @@ public class MockController : ControllerBase
     {
         return await ReadJsonFile(ResolveMockPath("api_details.json"));
     }
-    
+
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /services endpoint  
     /// </summary>
@@ -62,7 +60,7 @@ public class MockController : ControllerBase
     {
         return await ReadJsonFile(ResolveMockPath("service_list.json"));
     }
-    
+
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /services/{id} endpoint.
     /// As this is a mock the {id} value does not need to be valid 
@@ -79,7 +77,7 @@ public class MockController : ControllerBase
     {
         return await ReadJsonFile(ResolveMockPath("service_full.json"));
     }
-    
+
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /taxonomies endpoint  
     /// </summary>
@@ -95,7 +93,7 @@ public class MockController : ControllerBase
     {
         return await ReadJsonFile(ResolveMockPath("taxonomy_list.json"));
     }
-    
+
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /taxonomies/{id} endpoint. 
     /// As this is a mock the {id} value does not need to be valid
@@ -112,7 +110,7 @@ public class MockController : ControllerBase
     {
         return await ReadJsonFile(ResolveMockPath("taxonomy.json"));
     }
-    
+
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /taxonomy_terms endpoint
     /// </summary>
@@ -128,7 +126,7 @@ public class MockController : ControllerBase
     {
         return await ReadJsonFile(ResolveMockPath("taxonomy_term_list.json"));
     }
-    
+
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /taxonomy_terms/{id} endpoint.  
     /// As this is a mock the {id} value does not need to be valid
@@ -145,7 +143,7 @@ public class MockController : ControllerBase
     {
         return await ReadJsonFile(ResolveMockPath("taxonomy_term.json"));
     }
-    
+
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /service_at_locations endpoint
     /// </summary>
@@ -161,7 +159,7 @@ public class MockController : ControllerBase
     {
         return await ReadJsonFile(ResolveMockPath("service_at_location_list.json"));
     }
-    
+
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /service_at_locations/{id} endpoint.  
     /// As this is a mock the {id} value does not need to be valid
@@ -178,7 +176,7 @@ public class MockController : ControllerBase
     {
         return await ReadJsonFile(ResolveMockPath("service_at_location_full.json"));
     }
-    
+
     /// <summary>
     /// A MOCK endpoint that returns an example of the V1 `/validate` response 
     /// </summary>
@@ -188,11 +186,11 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetV1ValidatorMock([FromQuery]string? serviceUrl = null)
+    public async Task<IActionResult> GetV1ValidatorMock([FromQuery] string? serviceUrl = null)
     {
         return await ReadJsonFile("Mocks/V1.0-UK-Default/V1_ValidateResponse.json");
     }
-    
+
     /// <summary>
     /// A MOCK endpoint that returns an example of the V1 `/dashboard` response
     /// </summary>
@@ -207,12 +205,41 @@ public class MockController : ControllerBase
         return await ReadJsonFile("Mocks/V1.0-UK-Default/V1_DashboardResponse.json");
     }
 
+    /// <summary>
+    /// A MOCK endpoint that returns an example of the expected response from the V3 GET /organizations endpoint  
+    /// </summary>
+    [HttpGet]
+    [Route("organizations")]
+    [OutputCache(PolicyName = "MockEndpoints")]
+    [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetOrganizations()
+    {
+        return await ReadJsonFile(ResolveMockPath("organization_list.json"));
+    }
+
+    /// <summary>
+    /// A MOCK endpoint that returns an example of the expected response from the V3 GET /organizations/{id} endpoint. 
+    /// As this is a mock the {id} value does not need to be valid
+    /// </summary>
+    [HttpGet]
+    [Route("organizations/{id}")]
+    [OutputCache(PolicyName = "MockEndpoints")]
+    [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetOrganizationsById()
+    {
+        return await ReadJsonFile(ResolveMockPath("organization.json"));
+    }
+
     private async Task<IActionResult> ReadJsonFile(string filePath)
     {
         try
         {
             _logger.LogDebug("Reading mock JSON file: {FilePath}", filePath);
-            
+
             // Open the text file using a stream reader.
             using StreamReader reader = new(filePath);
 
@@ -238,5 +265,5 @@ public class MockController : ControllerBase
             _logger.LogError(ex, "Unexpected error reading mock file: {FilePath}", filePath);
             return StatusCode(500, new { error = "An unexpected error occurred", message = ex.Message });
         }
-    } 
+    }
 }
