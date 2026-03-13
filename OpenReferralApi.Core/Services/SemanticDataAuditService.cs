@@ -17,6 +17,9 @@ public class SemanticDataAuditService : ISemanticDataAuditService
     private static readonly Regex TokenRegex = new("[a-z0-9]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex EmailRegex = new("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex UrlRegex = new("^https?://", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex PlaceholderRegex = new("\\b(n/?a|none|unknown|test|tbd|placeholder|lorem ipsum)\\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex LetterRegex = new("[a-z]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex DigitRegex = new("\\d", RegexOptions.Compiled);
 
     private static readonly Dictionary<string, string[]> TaxonomyKeywordMap = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -216,6 +219,7 @@ public class SemanticDataAuditService : ISemanticDataAuditService
         var issues = new List<FeedAuditIssue>();
 
         var descriptionTokens = ExtractTokens(service.ServiceDescription);
+        var nameTokens = ExtractTokens(service.ServiceName);
         var assignedTerm = string.IsNullOrWhiteSpace(service.TaxonomyTerm)
             ? service.TaxonomyTerms.FirstOrDefault() ?? "Unspecified"
             : service.TaxonomyTerm;
@@ -247,6 +251,57 @@ public class SemanticDataAuditService : ISemanticDataAuditService
                 Confidence = Math.Clamp(bestAlternativeScore, 0, 1)
             });
         }
+        else if (assignedLooksWeak && descriptionTokens.Count >= 8 && !string.Equals(assignedTerm, "Unspecified", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.Add(new FeedAuditIssue
+            {
+                IssueType = "data_inconsistency",
+                Severity = "info",
+                AffectedField = "taxonomy_terms",
+                Description = $"Assigned term '{assignedTerm}' has weak evidence in the service description.",
+                Suggestion = "Review taxonomy terms and add more concrete service details if the current term is correct.",
+                Confidence = Math.Clamp(1 - assignedTermScore, 0.55, 0.9)
+            });
+        }
+
+        if (ContainsPlaceholderValue(service.ServiceName))
+        {
+            issues.Add(new FeedAuditIssue
+            {
+                IssueType = "inconsistent_name",
+                Severity = "warning",
+                AffectedField = "name",
+                Description = "Service name looks like placeholder text.",
+                Suggestion = "Replace placeholders with the real service name used by residents.",
+                Confidence = 0.9
+            });
+        }
+
+        if (ContainsPlaceholderValue(service.ServiceDescription))
+        {
+            issues.Add(new FeedAuditIssue
+            {
+                IssueType = "poor_description",
+                Severity = "warning",
+                AffectedField = "description",
+                Description = "Service description looks like placeholder text.",
+                Suggestion = "Provide a clear summary of support offered, eligibility and how to access the service.",
+                Confidence = 0.92
+            });
+        }
+
+        if (ContainsPlaceholderValue(service.Address))
+        {
+            issues.Add(new FeedAuditIssue
+            {
+                IssueType = "data_inconsistency",
+                Severity = "info",
+                AffectedField = "address",
+                Description = "Address contains placeholder-like text.",
+                Suggestion = "Replace temporary address content with a real location or remove it if unknown.",
+                Confidence = 0.78
+            });
+        }
 
         if (descriptionTokens.Count < 6)
         {
@@ -261,8 +316,135 @@ public class SemanticDataAuditService : ISemanticDataAuditService
             });
         }
 
-        var hasContact = service.Emails.Count > 0 || service.PhoneNumbers.Count > 0 || service.Urls.Count > 0;
-        if (!hasContact)
+        if (nameTokens.Count >= 2 && descriptionTokens.Count >= 8 && assignedTermScore < threshold)
+        {
+            var overlap = nameTokens.Count(descriptionTokens.Contains);
+            if (overlap == 0)
+            {
+                issues.Add(new FeedAuditIssue
+                {
+                    IssueType = "inconsistent_name",
+                    Severity = "info",
+                    AffectedField = "name",
+                    Description = "Service name and description have no meaningful overlap, which may indicate mismatched data.",
+                    Suggestion = "Check that the service name and description refer to the same offer.",
+                    Confidence = 0.7
+                });
+            }
+        }
+
+        var validEmailCount = 0;
+        foreach (var email in service.Emails)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                continue;
+            }
+
+            if (UrlRegex.IsMatch(email))
+            {
+                issues.Add(new FeedAuditIssue
+                {
+                    IssueType = "invalid_data",
+                    Severity = "warning",
+                    AffectedField = "email",
+                    Description = $"Email field contains a URL value '{email}'.",
+                    Suggestion = "Move website URLs to a URL field and keep email in user@domain format.",
+                    Confidence = 0.94
+                });
+                continue;
+            }
+
+            if (EmailRegex.IsMatch(email))
+            {
+                validEmailCount++;
+                continue;
+            }
+
+            issues.Add(new FeedAuditIssue
+            {
+                IssueType = "invalid_data",
+                Severity = "error",
+                AffectedField = "email",
+                Description = $"Email '{email}' does not look valid.",
+                Suggestion = "Use a standard email format such as name@example.org.",
+                Confidence = 0.98
+            });
+        }
+
+        var validUrlCount = 0;
+        foreach (var url in service.Urls)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                continue;
+            }
+
+            if (EmailRegex.IsMatch(url))
+            {
+                issues.Add(new FeedAuditIssue
+                {
+                    IssueType = "invalid_data",
+                    Severity = "warning",
+                    AffectedField = "url",
+                    Description = $"URL field contains an email value '{url}'.",
+                    Suggestion = "Move email values to an email field and keep URLs in http(s) format.",
+                    Confidence = 0.94
+                });
+                continue;
+            }
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var parsedUrl)
+                || !(parsedUrl.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                     || parsedUrl.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                || string.IsNullOrWhiteSpace(parsedUrl.Host)
+                || !parsedUrl.Host.Contains('.'))
+            {
+                issues.Add(new FeedAuditIssue
+                {
+                    IssueType = "invalid_data",
+                    Severity = "error",
+                    AffectedField = "url",
+                    Description = $"URL '{url}' is not a valid public http(s) URL.",
+                    Suggestion = "Provide an absolute URL, for example https://example.org/service.",
+                    Confidence = 0.98
+                });
+                continue;
+            }
+
+            validUrlCount++;
+        }
+
+        var validPhoneCount = 0;
+        foreach (var phone in service.PhoneNumbers)
+        {
+            if (string.IsNullOrWhiteSpace(phone))
+            {
+                continue;
+            }
+
+            var digitCount = DigitRegex.Matches(phone).Count;
+            var containsLetters = LetterRegex.IsMatch(phone);
+            var suspiciousRepeatedDigits = digitCount >= 7 && phone.Distinct().Count() <= 2;
+
+            if (digitCount < 7 || digitCount > 15 || containsLetters || suspiciousRepeatedDigits)
+            {
+                issues.Add(new FeedAuditIssue
+                {
+                    IssueType = "invalid_data",
+                    Severity = "warning",
+                    AffectedField = "phone",
+                    Description = $"Phone number '{phone}' looks malformed.",
+                    Suggestion = "Use a phone number with 7-15 digits and optional spacing or punctuation.",
+                    Confidence = 0.86
+                });
+                continue;
+            }
+
+            validPhoneCount++;
+        }
+
+        if (validEmailCount + validPhoneCount + validUrlCount == 0)
         {
             issues.Add(new FeedAuditIssue
             {
@@ -275,46 +457,17 @@ public class SemanticDataAuditService : ISemanticDataAuditService
             });
         }
 
-        foreach (var email in service.Emails.Where(x => !EmailRegex.IsMatch(x)))
-        {
-            issues.Add(new FeedAuditIssue
-            {
-                IssueType = "invalid_data",
-                Severity = "error",
-                AffectedField = "email",
-                Description = $"Email '{email}' does not look valid.",
-                Suggestion = "Use a standard email format such as name@example.org.",
-                Confidence = 0.98
-            });
-        }
-
-        foreach (var url in service.Urls.Where(x => !UrlRegex.IsMatch(x)))
-        {
-            issues.Add(new FeedAuditIssue
-            {
-                IssueType = "invalid_data",
-                Severity = "error",
-                AffectedField = "url",
-                Description = $"URL '{url}' is missing an http:// or https:// scheme.",
-                Suggestion = "Provide an absolute URL, for example https://example.org/service.",
-                Confidence = 0.98
-            });
-        }
-
-        if (service.PhoneNumbers.Any(x => ExtractTokens(x).Count == 0))
-        {
-            issues.Add(new FeedAuditIssue
-            {
-                IssueType = "invalid_data",
-                Severity = "warning",
-                AffectedField = "phone",
-                Description = "One or more phone numbers are empty or malformed.",
-                Suggestion = "Use internationally recognizable numeric phone values.",
-                Confidence = 0.8
-            });
-        }
-
         return issues;
+    }
+
+    private static bool ContainsPlaceholderValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return PlaceholderRegex.IsMatch(value);
     }
 
     private static IReadOnlyCollection<string> BuildCandidateTerms(

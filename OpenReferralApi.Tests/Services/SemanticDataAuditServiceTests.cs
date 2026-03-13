@@ -183,6 +183,42 @@ public class SemanticDataAuditServiceTests
         Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "poor_description"), Is.True);
     }
 
+    [Test]
+    public async Task AuditAsync_FlagsOutOfContextContactAndPlaceholderValues()
+    {
+        var service = CreateService(
+            new StubHttpMessageHandler(_ => throw new InvalidOperationException("HTTP should not be called for direct service list mode.")),
+            new StubSemanticAuditAgentService(false, (_, _, _) => Task.FromResult<SemanticAuditAgentEvaluation?>(null)));
+
+        var request = new SemanticDataAuditRequest
+        {
+            Services = new List<SemanticAuditServiceRecord>
+            {
+                new()
+                {
+                    ServiceId = "svc-4",
+                    ServiceName = "Test Service",
+                    ServiceDescription = "N/A",
+                    TaxonomyTerm = "Housing Advice",
+                    Emails = new List<string> { "https://example.org/contact" },
+                    Urls = new List<string> { "support@example.org" },
+                    PhoneNumbers = new List<string> { "abc123" },
+                    Address = "unknown"
+                }
+            }
+        };
+
+        var result = await service.AuditAsync(request);
+
+        Assert.That(result.FlaggedServices, Is.EqualTo(1));
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "inconsistent_name" && x.AffectedField == "name"), Is.True);
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "poor_description" && x.AffectedField == "description"), Is.True);
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "invalid_data" && x.AffectedField == "email"), Is.True);
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "invalid_data" && x.AffectedField == "url"), Is.True);
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "invalid_data" && x.AffectedField == "phone"), Is.True);
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "missing_contact"), Is.True);
+    }
+
     private static SemanticDataAuditService CreateService(HttpMessageHandler handler, ISemanticAuditAgentService agentService)
     {
         var options = Options.Create(new SemanticDataAuditOptions
