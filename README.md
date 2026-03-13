@@ -111,6 +111,130 @@ When running locally in development mode, interactive API documentation is avail
 
 4. **Access Swagger UI**: Open `http://localhost:5000` in your browser
 
+## Semantic Data Audit
+
+The semantic data audit endpoint performs a second-pass quality review over schema-valid ORUK service data. It can flag content that looks suspicious, out of context, or duplicated.
+
+- **Endpoint**: `POST /api/semantic-audit/validate`
+- **Input modes**:
+  - Provide inline `services`
+  - Or provide `sourceBaseUrl` (the API fetches `/services` and `/taxonomy_terms`)
+
+### What It Checks
+
+- Taxonomy context quality (assigned taxonomy terms vs description content)
+- Placeholder values in service fields (name/description/address)
+- Contact field context mistakes (URL in email field, email in URL field)
+- Invalid or malformed contact values (email/url/phone)
+- Missing valid contact channels
+- Duplicate and near-duplicate service records across a feed
+
+### Request Example (Inline Services)
+
+```json
+{
+  "strictMode": false,
+  "taxonomyTerms": ["Food Bank", "Legal Aid", "Housing Advice"],
+  "services": [
+    {
+      "serviceId": "svc-100",
+      "serviceName": "Community Food Hub",
+      "serviceDescription": "Emergency groceries and food parcels for local households.",
+      "taxonomyTerm": "Food Bank",
+      "emails": ["help@example.org"],
+      "urls": ["https://example.org/food"],
+      "phoneNumbers": ["0207 123 4567"],
+      "address": "1 Example Street, London"
+    }
+  ]
+}
+```
+
+### Request Example (Fetch from Endpoint)
+
+```json
+{
+  "strictMode": true,
+  "sourceBaseUrl": "https://directory.example.org",
+  "servicesPath": "/services",
+  "taxonomyTermsPath": "/taxonomy_terms"
+}
+```
+
+### Configuration (`SemanticDataAudit`)
+
+| Setting | Type | Purpose |
+|---|---|---|
+| `Enabled` | bool | Enables semantic audit endpoint |
+| `MismatchThreshold` | number (0-1) | Baseline taxonomy confidence threshold |
+| `MinimumAlternativeGap` | number (0-1) | Required confidence gap for taxonomy mismatch suggestions |
+| `MinDescriptionTokenCount` | int | Minimum description token count before short-description issue |
+| `EnablePlaceholderChecks` | bool | Enables placeholder value detection |
+| `EnableContactFieldContextChecks` | bool | Enables cross-field contact checks |
+| `PhoneMinDigits` | int | Minimum phone digits |
+| `PhoneMaxDigits` | int | Maximum phone digits |
+| `EnableDuplicateDetection` | bool | Enables duplicate and near-duplicate detection |
+| `DuplicateSimilarityThreshold` | number (0-1) | Similarity for likely duplicate warning |
+| `NearDuplicateSimilarityThreshold` | number (0-1) | Similarity for near-duplicate info flag |
+| `StrictModeThresholdAdjustment` | number (0-1) | Increase applied to mismatch threshold in strict mode |
+| `StrictModeDescriptionTokenIncrease` | int | Extra token requirement in strict mode |
+| `StrictModeDuplicateThresholdReduction` | number (0-1) | Lower duplicate thresholds in strict mode |
+
+### Recommended Profiles
+
+Use these as practical defaults and tune by feed quality.
+
+**Normal (routine monitoring):**
+
+```json
+{
+  "strictMode": false,
+  "SemanticDataAudit": {
+    "MismatchThreshold": 0.40,
+    "MinimumAlternativeGap": 0.25,
+    "MinDescriptionTokenCount": 6,
+    "EnablePlaceholderChecks": true,
+    "EnableContactFieldContextChecks": true,
+    "PhoneMinDigits": 7,
+    "PhoneMaxDigits": 15,
+    "EnableDuplicateDetection": true,
+    "DuplicateSimilarityThreshold": 0.92,
+    "NearDuplicateSimilarityThreshold": 0.78
+  }
+}
+```
+
+**Strict cleanup (data remediation campaigns):**
+
+```json
+{
+  "strictMode": true,
+  "SemanticDataAudit": {
+    "MismatchThreshold": 0.40,
+    "StrictModeThresholdAdjustment": 0.10,
+    "MinDescriptionTokenCount": 6,
+    "StrictModeDescriptionTokenIncrease": 2,
+    "PhoneMinDigits": 7,
+    "PhoneMaxDigits": 15,
+    "EnableDuplicateDetection": true,
+    "DuplicateSimilarityThreshold": 0.92,
+    "NearDuplicateSimilarityThreshold": 0.78,
+    "StrictModeDuplicateThresholdReduction": 0.07
+  }
+}
+```
+
+### Response Notes
+
+The response includes per-service issues with:
+
+- `issueType` (for example `taxonomy_mismatch`, `invalid_data`, `data_inconsistency`)
+- `severity` (`error`, `warning`, `info`)
+- `affectedField`
+- `description`, `suggestion`, and `confidence`
+
+For duplicate findings, `affectedField` uses `duplicate::<serviceId>` to identify the related record.
+
 ## Authentication
 
 The OpenReferral API validation service supports multiple authentication methods for testing protected API endpoints. Authentication can be configured when making validation requests to ensure the validator can access secured endpoints.

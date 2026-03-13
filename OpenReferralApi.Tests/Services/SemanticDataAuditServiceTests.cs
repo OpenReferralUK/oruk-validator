@@ -154,6 +154,52 @@ public class SemanticDataAuditServiceTests
     }
 
     [Test]
+    public async Task AuditAsync_WithSourceBaseUrl_AllowsMissingTaxonomyEndpoint()
+    {
+        var service = CreateService(new StubHttpMessageHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath.EndsWith("/services", StringComparison.Ordinal))
+            {
+                var payload = new JObject
+                {
+                    ["services"] = new JArray
+                    {
+                        new JObject
+                        {
+                            ["id"] = "svc-no-taxonomy",
+                            ["name"] = "Tenant Rights Clinic",
+                            ["description"] = "Free legal advice about housing law, eviction notices and tribunal representation.",
+                            ["taxonomy_terms"] = new JArray("legal-aid"),
+                            ["email"] = "contact@example.org",
+                            ["url"] = "https://example.org/tenant-rights"
+                        }
+                    }
+                };
+
+                return Json(payload);
+            }
+
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath.EndsWith("/taxonomy_terms", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        }),
+        new StubSemanticAuditAgentService(false, (_, _, _) => Task.FromResult<SemanticAuditAgentEvaluation?>(null)));
+
+        var request = new SemanticDataAuditRequest
+        {
+            SourceBaseUrl = "https://example-directory.test"
+        };
+
+        var result = await service.AuditAsync(request);
+
+        Assert.That(result.TotalServices, Is.EqualTo(1));
+        Assert.That(result.Findings[0].ServiceId, Is.EqualTo("svc-no-taxonomy"));
+    }
+
+    [Test]
     public async Task AuditAsync_FlagsMissingContactAndInvalidEmail()
     {
         var service = CreateService(
@@ -219,9 +265,115 @@ public class SemanticDataAuditServiceTests
         Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "missing_contact"), Is.True);
     }
 
-    private static SemanticDataAuditService CreateService(HttpMessageHandler handler, ISemanticAuditAgentService agentService)
+    [Test]
+    public async Task AuditAsync_StrictMode_FlagsBorderlineDescription()
     {
-        var options = Options.Create(new SemanticDataAuditOptions
+        var service = CreateService(
+            new StubHttpMessageHandler(_ => throw new InvalidOperationException("HTTP should not be called for direct service list mode.")),
+            new StubSemanticAuditAgentService(false, (_, _, _) => Task.FromResult<SemanticAuditAgentEvaluation?>(null)));
+
+        var request = new SemanticDataAuditRequest
+        {
+            StrictMode = true,
+            Services = new List<SemanticAuditServiceRecord>
+            {
+                new()
+                {
+                    ServiceId = "svc-5",
+                    ServiceName = "Tenant Advice Hub",
+                    ServiceDescription = "Legal advice for housing eviction rights appeals",
+                    TaxonomyTerm = "Legal Aid",
+                    Emails = new List<string> { "help@example.org" },
+                    Urls = new List<string> { "https://example.org/help" }
+                }
+            }
+        };
+
+        var result = await service.AuditAsync(request);
+
+        Assert.That(result.FlaggedServices, Is.EqualTo(1));
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "poor_description"), Is.True);
+    }
+
+    [Test]
+    public async Task AuditAsync_FlagsDuplicateServicesAcrossFeed()
+    {
+        var service = CreateService(
+            new StubHttpMessageHandler(_ => throw new InvalidOperationException("HTTP should not be called for direct service list mode.")),
+            new StubSemanticAuditAgentService(false, (_, _, _) => Task.FromResult<SemanticAuditAgentEvaluation?>(null)));
+
+        var request = new SemanticDataAuditRequest
+        {
+            Services = new List<SemanticAuditServiceRecord>
+            {
+                new()
+                {
+                    ServiceId = "svc-6",
+                    ServiceName = "Family Food Hub",
+                    ServiceDescription = "Emergency food parcels and grocery support for local families in crisis.",
+                    TaxonomyTerm = "Food Bank",
+                    Emails = new List<string> { "food@example.org" }
+                },
+                new()
+                {
+                    ServiceId = "svc-7",
+                    ServiceName = "Family Food Hub",
+                    ServiceDescription = "Emergency food parcels and grocery support for local families in crisis.",
+                    TaxonomyTerm = "Food Bank",
+                    Emails = new List<string> { "food@example.org" }
+                }
+            }
+        };
+
+        var result = await service.AuditAsync(request);
+
+        Assert.That(result.FlaggedServices, Is.EqualTo(2));
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "data_inconsistency" && x.AffectedField == "duplicate::svc-7"), Is.True);
+        Assert.That(result.Findings[1].Issues.Any(x => x.IssueType == "data_inconsistency" && x.AffectedField == "duplicate::svc-6"), Is.True);
+    }
+
+    [Test]
+    public async Task AuditAsync_DisablesPlaceholderChecks_WhenConfigured()
+    {
+        var service = CreateService(
+            new StubHttpMessageHandler(_ => throw new InvalidOperationException("HTTP should not be called for direct service list mode.")),
+            new StubSemanticAuditAgentService(false, (_, _, _) => Task.FromResult<SemanticAuditAgentEvaluation?>(null)),
+            new SemanticDataAuditOptions
+            {
+                Enabled = true,
+                MismatchThreshold = 0.4,
+                MinimumAlternativeGap = 0.25,
+                EnablePlaceholderChecks = false
+            });
+
+        var request = new SemanticDataAuditRequest
+        {
+            Services = new List<SemanticAuditServiceRecord>
+            {
+                new()
+                {
+                    ServiceId = "svc-8",
+                    ServiceName = "Test",
+                    ServiceDescription = "Placeholder text with enough detail to pass description length checks for this scenario.",
+                    TaxonomyTerm = "Housing Advice",
+                    Emails = new List<string> { "help@example.org" },
+                    Urls = new List<string> { "https://example.org/help" }
+                }
+            }
+        };
+
+        var result = await service.AuditAsync(request);
+
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "inconsistent_name" && x.AffectedField == "name"), Is.False);
+        Assert.That(result.Findings[0].Issues.Any(x => x.IssueType == "poor_description" && x.AffectedField == "description"), Is.False);
+    }
+
+    private static SemanticDataAuditService CreateService(
+        HttpMessageHandler handler,
+        ISemanticAuditAgentService agentService,
+        SemanticDataAuditOptions? semanticOptions = null)
+    {
+        var options = Options.Create(semanticOptions ?? new SemanticDataAuditOptions
         {
             Enabled = true,
             MismatchThreshold = 0.4,

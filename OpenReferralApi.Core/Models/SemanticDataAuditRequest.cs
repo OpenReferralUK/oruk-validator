@@ -43,6 +43,11 @@ public class SemanticDataAuditRequest : IValidatableObject
     [Range(0, 1)]
     public double? MismatchThreshold { get; set; }
 
+    /// <summary>
+    /// Enables stricter auditing with tighter thresholds and broader anomaly detection.
+    /// </summary>
+    public bool StrictMode { get; set; }
+
     public IEnumerable<System.ComponentModel.DataAnnotations.ValidationResult> Validate(ValidationContext validationContext)
     {
         if ((Services == null || Services.Count == 0) && string.IsNullOrWhiteSpace(SourceBaseUrl))

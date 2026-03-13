@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -60,7 +61,10 @@ public class SemanticDataAuditService : ISemanticDataAuditService
         }
 
         var records = await ResolveServiceRecordsAsync(request, cancellationToken);
-        var threshold = request.MismatchThreshold ?? _options.MismatchThreshold;
+        var baseThreshold = request.MismatchThreshold ?? _options.MismatchThreshold;
+        var threshold = request.StrictMode
+            ? Math.Clamp(baseThreshold + _options.StrictModeThresholdAdjustment, 0, 1)
+            : baseThreshold;
         var candidateTerms = BuildCandidateTerms(records, request);
 
         var findings = new List<SemanticAuditFinding>();
@@ -69,8 +73,10 @@ public class SemanticDataAuditService : ISemanticDataAuditService
             cancellationToken.ThrowIfCancellationRequested();
 
             var llmFinding = await ScoreWithLlmAsync(service, candidateTerms, threshold, cancellationToken);
-            findings.Add(llmFinding ?? ScoreWithHeuristic(service, candidateTerms, threshold));
+            findings.Add(llmFinding ?? ScoreWithHeuristic(service, candidateTerms, threshold, request.StrictMode));
         }
+
+        AddDuplicateIssues(records, findings, request.StrictMode);
 
         var engine = _semanticAuditAgentService.IsEnabled ? "microsoft-agent-framework" : "heuristic";
 
@@ -108,7 +114,7 @@ public class SemanticDataAuditService : ISemanticDataAuditService
             throw new ArgumentException("SourceBaseUrl is required when Services are not provided.");
         }
 
-        var taxonomyById = await FetchTaxonomyTermsAsync(request, cancellationToken);
+        var taxonomyById = await FetchTaxonomyTermsOptionalAsync(request, cancellationToken);
         var services = await FetchServicesAsync(request, cancellationToken);
 
         var records = new List<SemanticAuditServiceRecord>();
@@ -199,9 +205,10 @@ public class SemanticDataAuditService : ISemanticDataAuditService
     private SemanticAuditFinding ScoreWithHeuristic(
         SemanticAuditServiceRecord service,
         IReadOnlyCollection<string> candidateTerms,
-        double threshold)
+        double threshold,
+        bool strictMode)
     {
-        var issues = BuildHeuristicIssues(service, candidateTerms, threshold);
+        var issues = BuildHeuristicIssues(service, candidateTerms, threshold, strictMode);
 
         return new SemanticAuditFinding
         {
@@ -214,7 +221,8 @@ public class SemanticDataAuditService : ISemanticDataAuditService
     private List<FeedAuditIssue> BuildHeuristicIssues(
         SemanticAuditServiceRecord service,
         IReadOnlyCollection<string> candidateTerms,
-        double threshold)
+        double threshold,
+        bool strictMode)
     {
         var issues = new List<FeedAuditIssue>();
 
@@ -264,7 +272,7 @@ public class SemanticDataAuditService : ISemanticDataAuditService
             });
         }
 
-        if (ContainsPlaceholderValue(service.ServiceName))
+        if (_options.EnablePlaceholderChecks && ContainsPlaceholderValue(service.ServiceName))
         {
             issues.Add(new FeedAuditIssue
             {
@@ -277,7 +285,7 @@ public class SemanticDataAuditService : ISemanticDataAuditService
             });
         }
 
-        if (ContainsPlaceholderValue(service.ServiceDescription))
+        if (_options.EnablePlaceholderChecks && ContainsPlaceholderValue(service.ServiceDescription))
         {
             issues.Add(new FeedAuditIssue
             {
@@ -290,7 +298,7 @@ public class SemanticDataAuditService : ISemanticDataAuditService
             });
         }
 
-        if (ContainsPlaceholderValue(service.Address))
+        if (_options.EnablePlaceholderChecks && ContainsPlaceholderValue(service.Address))
         {
             issues.Add(new FeedAuditIssue
             {
@@ -303,7 +311,11 @@ public class SemanticDataAuditService : ISemanticDataAuditService
             });
         }
 
-        if (descriptionTokens.Count < 6)
+        var minDescriptionTokenCount = strictMode
+            ? _options.MinDescriptionTokenCount + _options.StrictModeDescriptionTokenIncrease
+            : _options.MinDescriptionTokenCount;
+
+        if (descriptionTokens.Count < minDescriptionTokenCount)
         {
             issues.Add(new FeedAuditIssue
             {
@@ -341,7 +353,7 @@ public class SemanticDataAuditService : ISemanticDataAuditService
                 continue;
             }
 
-            if (UrlRegex.IsMatch(email))
+            if (_options.EnableContactFieldContextChecks && UrlRegex.IsMatch(email))
             {
                 issues.Add(new FeedAuditIssue
                 {
@@ -380,7 +392,7 @@ public class SemanticDataAuditService : ISemanticDataAuditService
                 continue;
             }
 
-            if (EmailRegex.IsMatch(url))
+            if (_options.EnableContactFieldContextChecks && EmailRegex.IsMatch(url))
             {
                 issues.Add(new FeedAuditIssue
                 {
@@ -416,6 +428,13 @@ public class SemanticDataAuditService : ISemanticDataAuditService
         }
 
         var validPhoneCount = 0;
+        var minPhoneDigits = strictMode ? _options.PhoneMinDigits + 1 : _options.PhoneMinDigits;
+        var maxPhoneDigits = strictMode ? _options.PhoneMaxDigits - 1 : _options.PhoneMaxDigits;
+        if (maxPhoneDigits < minPhoneDigits)
+        {
+            maxPhoneDigits = minPhoneDigits;
+        }
+
         foreach (var phone in service.PhoneNumbers)
         {
             if (string.IsNullOrWhiteSpace(phone))
@@ -427,7 +446,7 @@ public class SemanticDataAuditService : ISemanticDataAuditService
             var containsLetters = LetterRegex.IsMatch(phone);
             var suspiciousRepeatedDigits = digitCount >= 7 && phone.Distinct().Count() <= 2;
 
-            if (digitCount < 7 || digitCount > 15 || containsLetters || suspiciousRepeatedDigits)
+            if (digitCount < minPhoneDigits || digitCount > maxPhoneDigits || containsLetters || suspiciousRepeatedDigits)
             {
                 issues.Add(new FeedAuditIssue
                 {
@@ -458,6 +477,154 @@ public class SemanticDataAuditService : ISemanticDataAuditService
         }
 
         return issues;
+    }
+
+    private void AddDuplicateIssues(
+        IReadOnlyList<SemanticAuditServiceRecord> records,
+        IReadOnlyList<SemanticAuditFinding> findings,
+        bool strictMode)
+    {
+        if (!_options.EnableDuplicateDetection || records.Count < 2 || findings.Count == 0)
+        {
+            return;
+        }
+
+        var duplicateThreshold = strictMode
+            ? _options.DuplicateSimilarityThreshold - _options.StrictModeDuplicateThresholdReduction
+            : _options.DuplicateSimilarityThreshold;
+        var nearDuplicateThreshold = strictMode
+            ? _options.NearDuplicateSimilarityThreshold - _options.StrictModeDuplicateThresholdReduction
+            : _options.NearDuplicateSimilarityThreshold;
+
+        duplicateThreshold = Math.Clamp(duplicateThreshold, 0, 1);
+        nearDuplicateThreshold = Math.Clamp(nearDuplicateThreshold, 0, 1);
+
+        if (nearDuplicateThreshold > duplicateThreshold)
+        {
+            nearDuplicateThreshold = duplicateThreshold;
+        }
+
+        var findingById = findings
+            .GroupBy(x => x.ServiceId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < records.Count; i++)
+        {
+            for (var j = i + 1; j < records.Count; j++)
+            {
+                var left = records[i];
+                var right = records[j];
+
+                if (string.Equals(left.ServiceId, right.ServiceId, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var similarity = ComputeRecordSimilarity(left, right);
+                if (similarity < nearDuplicateThreshold)
+                {
+                    continue;
+                }
+
+                var isLikelyDuplicate = similarity >= duplicateThreshold;
+                var severity = isLikelyDuplicate ? "warning" : "info";
+                var confidence = Math.Clamp(similarity, 0.6, 0.99);
+
+                if (findingById.TryGetValue(left.ServiceId, out var leftFinding))
+                {
+                    AddDuplicateIssue(leftFinding, right, similarity, severity, confidence);
+                }
+
+                if (findingById.TryGetValue(right.ServiceId, out var rightFinding))
+                {
+                    AddDuplicateIssue(rightFinding, left, similarity, severity, confidence);
+                }
+            }
+        }
+    }
+
+    private static void AddDuplicateIssue(
+        SemanticAuditFinding finding,
+        SemanticAuditServiceRecord other,
+        double similarity,
+        string severity,
+        double confidence)
+    {
+        var duplicateKey = $"duplicate::{other.ServiceId}";
+        if (finding.Issues.Any(x =>
+                x.IssueType == "data_inconsistency"
+                && string.Equals(x.AffectedField, duplicateKey, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        finding.Issues.Add(new FeedAuditIssue
+        {
+            IssueType = "data_inconsistency",
+            Severity = severity,
+            AffectedField = duplicateKey,
+            Description = $"Potential duplicate of service '{other.ServiceId}' (similarity {similarity:F2}).",
+            Suggestion = "Review these records for duplication and merge or differentiate where appropriate.",
+            Confidence = confidence
+        });
+    }
+
+    private static double ComputeRecordSimilarity(SemanticAuditServiceRecord left, SemanticAuditServiceRecord right)
+    {
+        var leftDescriptionTokens = NormalizeTokens(ExtractTokens(left.ServiceDescription));
+        var rightDescriptionTokens = NormalizeTokens(ExtractTokens(right.ServiceDescription));
+        var descriptionScore = JaccardSimilarity(leftDescriptionTokens, rightDescriptionTokens);
+
+        var leftNameTokens = NormalizeTokens(ExtractTokens(left.ServiceName));
+        var rightNameTokens = NormalizeTokens(ExtractTokens(right.ServiceName));
+        var nameScore = JaccardSimilarity(leftNameTokens, rightNameTokens);
+
+        var leftAddressTokens = NormalizeTokens(ExtractTokens(left.Address));
+        var rightAddressTokens = NormalizeTokens(ExtractTokens(right.Address));
+        var addressScore = JaccardSimilarity(leftAddressTokens, rightAddressTokens);
+
+        var score = (descriptionScore * 0.7) + (nameScore * 0.2) + (addressScore * 0.1);
+
+        if (!string.IsNullOrWhiteSpace(left.ServiceName)
+            && string.Equals(NormalizeText(left.ServiceName), NormalizeText(right.ServiceName), StringComparison.OrdinalIgnoreCase))
+        {
+            score += 0.05;
+        }
+
+        if (!string.IsNullOrWhiteSpace(left.ServiceDescription)
+            && string.Equals(NormalizeText(left.ServiceDescription), NormalizeText(right.ServiceDescription), StringComparison.OrdinalIgnoreCase))
+        {
+            score = Math.Max(score, 0.98);
+        }
+
+        return Math.Clamp(score, 0, 1);
+    }
+
+    private static double JaccardSimilarity(HashSet<string> left, HashSet<string> right)
+    {
+        if (left.Count == 0 || right.Count == 0)
+        {
+            return 0;
+        }
+
+        var intersectionCount = left.Count(right.Contains);
+        var unionCount = left.Count + right.Count - intersectionCount;
+        if (unionCount == 0)
+        {
+            return 0;
+        }
+
+        return (double)intersectionCount / unionCount;
+    }
+
+    private static string NormalizeText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return string.Join(' ', ExtractTokens(value));
     }
 
     private static bool ContainsPlaceholderValue(string? value)
@@ -581,6 +748,29 @@ public class SemanticDataAuditService : ISemanticDataAuditService
         return result;
     }
 
+    private async Task<Dictionary<string, string>> FetchTaxonomyTermsOptionalAsync(
+        SemanticDataAuditRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await FetchTaxonomyTermsAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException ex) when (
+            ex.StatusCode == HttpStatusCode.NotFound
+            || ex.StatusCode == HttpStatusCode.MethodNotAllowed
+            || ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            _logger.LogWarning(
+                ex,
+                "Taxonomy terms endpoint '{TaxonomyPath}' is unavailable (status: {StatusCode}). Continuing semantic audit without taxonomy lookup.",
+                request.TaxonomyTermsPath,
+                ex.StatusCode);
+
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
     private async Task<JArray> FetchServicesAsync(
         SemanticDataAuditRequest request,
         CancellationToken cancellationToken)
@@ -597,6 +787,12 @@ public class SemanticDataAuditService : ISemanticDataAuditService
         var url = BuildAbsoluteUrl(request.SourceBaseUrl!, path);
         using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url);
         ApplyDataSourceAuthentication(httpRequest, request.DataSourceAuthentication, url);
+
+                // Set User-Agent
+        httpRequest.Headers.Add("User-Agent", "JsonValidator/1.0.0");
+
+        // Set Accept headers for better compatibility
+        httpRequest.Headers.Add("Accept", "application/json, application/schema+json, text/plain, */*");
 
         var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
         response.EnsureSuccessStatusCode();
