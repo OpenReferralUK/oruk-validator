@@ -332,7 +332,7 @@ jobs:
           sleep 12
           curl --fail "${{ vars.HEALTH_ENDPOINT }}" || echo "⚠️ Production health check failed"
       - name: Create Release
-        uses: softprops/action-gh-release@v2.5.0
+        uses: softprops/action-gh-release@v2.6.1
         with:
           tag_name: v${{ github.run_number }}
           name: Release v${{ github.run_number }}
