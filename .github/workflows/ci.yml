@@ -12,8 +12,6 @@ concurrency:
 
 env:
   DOTNET_VERSION: "10.0.x"
-  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-  DOTNET_CLI_TELEMETRY_OPTOUT: true
   TRIVY_DOCKER_IMAGE: "aquasec/trivy:0.69.1"
 
 permissions:
@@ -284,53 +282,12 @@ jobs:
           name: zap-scan-results
           path: zap-reports/
 
-  # --- JOB 7: DEPLOY STAGING ---
-  deploy-staging:
-    name: Deploy to Staging
-    needs: [docker-build, security-scan-image, zap-scan]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install Heroku CLI
-        run: curl https://cli-assets.heroku.com/install.sh | sh
-      - name: Deploy to Heroku
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          IMAGE_TAG: ${{ needs.docker-build.outputs.image_ref }}
-        run: |
-          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker pull $IMAGE_TAG
-          heroku container:login
-          heroku stack:set container --app ${{ vars.HEROKU_STAGING_APP }}
-          docker tag $IMAGE_TAG registry.heroku.com/${{ vars.HEROKU_STAGING_APP }}/web:latest
-          docker push registry.heroku.com/${{ vars.HEROKU_STAGING_APP }}/web:latest
-          heroku container:release web --app ${{ vars.HEROKU_STAGING_APP }}
-          sleep 12
-          curl --fail "${{ vars.STAGING_HEALTH_ENDPOINT }}" || echo "⚠️ Staging health check failed"
-
-  # --- JOB 8: DEPLOY PRODUCTION ---
-  deploy-production:
-    name: Deploy to Production
-    needs: [docker-build, security-scan-image, zap-scan]
+  create-release:
+    name: Create GitHub Release
+    needs: [security-scan-image, zap-scan]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: Install Heroku CLI
-        run: curl https://cli-assets.heroku.com/install.sh | sh
-      - name: Deploy to Heroku
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          IMAGE_TAG: ${{ needs.docker-build.outputs.image_ref }}
-        run: |
-          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker pull $IMAGE_TAG
-          heroku container:login
-          heroku stack:set container --app ${{ vars.HEROKU_PROD_APP }}
-          docker tag $IMAGE_TAG registry.heroku.com/${{ vars.HEROKU_PROD_APP }}/web:latest
-          docker push registry.heroku.com/${{ vars.HEROKU_PROD_APP }}/web:latest
-          heroku container:release web --app ${{ vars.HEROKU_PROD_APP }}
-          sleep 12
-          curl --fail "${{ vars.HEALTH_ENDPOINT }}" || echo "⚠️ Production health check failed"
       - name: Create Release
         uses: softprops/action-gh-release@v2.5.0
         with:
