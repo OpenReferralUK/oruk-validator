@@ -1,4 +1,4 @@
-name: Unified CI/CD & Deployment
+name: CI/CD Pipeline
 
 on:
   pull_request:
@@ -123,7 +123,7 @@ jobs:
           output: "trivy-fs-results.sarif"
           severity: "CRITICAL,HIGH"
           exit-code: "0" # Do not break the build here; let the Gatekeeper handle it
-          cache-dir: .trivycache 
+          cache-dir: .trivycache
 
       - name: Upload Trivy FS results
         if: always() && matrix.scan == 'trivy-fs'
@@ -142,7 +142,6 @@ jobs:
       - name: Perform CodeQL Analysis
         if: matrix.scan == 'codeql'
         uses: github/codeql-action/analyze@v4.32.6
-
 
   # --- JOB 3: DOCKER & DAST ---
   # Now depends only on Build-and-Test to enable parallel execution
@@ -187,7 +186,7 @@ jobs:
           format: "sarif"
           output: "trivy-image-results.sarif"
           severity: "CRITICAL,HIGH"
-          cache-dir: .trivycache 
+          cache-dir: .trivycache
 
       - name: Run App for ZAP
         run: docker run -d -p 5000:80 --name test-app my-app:local
