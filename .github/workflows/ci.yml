@@ -89,12 +89,10 @@ jobs:
           retention-days: 14
 
   # --- JOB 2: SECURITY & CODE QUALITY ---
-  # Runs in parallel with Docker & DAST
   security-scans:
-    name: Security & Code Quality Analysis
+    name: Security Scan (${{ matrix.scan }})
     runs-on: ubuntu-latest
     needs: build-and-test
-    # REQUIRED: Prevents skip if build-and-test succeeded
     if: always() && needs.build-and-test.result == 'success'
     permissions:
       security-events: write
@@ -103,21 +101,37 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # We use the matrix for the TOOL, not the LANGUAGE
         scan: [codeql, trivy-fs]
     steps:
       - uses: actions/checkout@v6.0.2
 
-      # --- 1. Trivy Database Caching ---
+      # --- TRIVY FS SCAN ---
       - name: Cache Trivy DB
         if: matrix.scan == 'trivy-fs'
-        uses: actions/cache@v5.0.4
+        uses: actions/cache@v4 # Use stable v4
         with:
-          path: .trivycache # Change from ~/.cache/trivy to .trivycache
-          key: trivy-db-${{ runner.os }}-${{ github.ref_name }}
-          restore-keys: trivy-db-${{ runner.os }}-
+          path: .trivycache
+          key: trivy-db-fs-${{ runner.os }}-${{ github.ref_name }}
+          restore-keys: trivy-db-fs-${{ runner.os }}-
 
-      # --- CodeQL Logic ---
+      - name: Trivy Filesystem Scan
+        if: matrix.scan == 'trivy-fs'
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: "fs"
+          format: "sarif"
+          output: "trivy-fs-results.sarif"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0" # Do not break the build here; let the Gatekeeper handle it
+          cache-dir: .trivycache 
+
+      - name: Upload Trivy FS results
+        if: always() && matrix.scan == 'trivy-fs'
+        uses: github/codeql-action/upload-sarif@v4.32.6
+        with:
+          sarif_file: "trivy-fs-results.sarif"
+
+      # --- CODEQL SCAN ---
       - name: Initialize CodeQL
         if: matrix.scan == 'codeql'
         uses: github/codeql-action/init@v4.32.6
@@ -129,24 +143,6 @@ jobs:
         if: matrix.scan == 'codeql'
         uses: github/codeql-action/analyze@v4.32.6
 
-      # --- Trivy Logic ---
-      - name: Trivy Filesystem Scan
-        if: matrix.scan == 'trivy-fs'
-        uses: aquasecurity/trivy-action@0.35.0
-        with:
-          scan-type: "fs"
-          format: "sarif"
-          output: "trivy-fs-results.sarif"
-          severity: "CRITICAL,HIGH"
-          # This ensures the scan doesn't fail your build unless it finds a Critical/High
-          exit-code: "0"
-          cache-dir: .trivycache 
-
-      - name: Upload results
-        uses: github/codeql-action/upload-sarif@v4.32.6
-        if: always() && matrix.scan == 'trivy-fs'
-        with:
-          sarif_file: trivy-fs-results.sarif
 
   # --- JOB 3: DOCKER & DAST ---
   # Now depends only on Build-and-Test to enable parallel execution
