@@ -4,7 +4,8 @@ on:
   pull_request:
     branches: [staging, main]
   push:
-    branches: [staging, main, refactor--update-CI/CD-workflow-remove-deployment-improve-performance]
+    # there is no need to run this workflow on push to staging as it will be triggered by the PR workflow, but we do want it to run on push to main for direct commits and merges
+    branches: [main, refactor--update-CI/CD-workflow-remove-deployment-improve-performance]
   workflow_dispatch: {}
 
 concurrency:
