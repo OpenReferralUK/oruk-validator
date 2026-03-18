@@ -5,7 +5,7 @@ on:
     branches: [staging, main]
   push:
     # there is no need to run this workflow on push to staging as it will be triggered by the PR workflow, but we do want it to run on push to main for direct commits and merges
-    branches: [main, refactor--update-CI/CD-workflow-remove-deployment-improve-performance]
+    branches: [main]
   workflow_dispatch: {}
 
 concurrency:
@@ -233,7 +233,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-   # --- JOB 4: FINAL STATUS CHECK (The Gatekeeper) ---
+    # --- JOB 4: FINAL STATUS CHECK (The Gatekeeper) ---
   # This job is what you should use for your Branch Protection Rules (other than push to main).
   # It only runs if all preceding parallel jobs succeed.
   workflow-status:
