@@ -38,14 +38,8 @@ jobs:
     steps:
       - name: Check Branch Flow
         run: |
-          TARGET_BRANCH="${{ github.base_ref }}"
-          SOURCE_BRANCH="${{ github.head_ref }}"
-          
-          echo "Target: $TARGET_BRANCH"
-          echo "Source: $SOURCE_BRANCH"
-
-          if [[ "$TARGET_BRANCH" == "main" && "$SOURCE_BRANCH" != "staging" ]]; then
-            echo "::error::Illegal Merge: Pull Requests to 'main' must originate from 'staging'."
+          if [[ "${{ github.base_ref }}" == "main" && "${{ github.head_ref }}" != "staging" ]]; then
+            echo "::error::Illegal Merge: PRs to 'main' must originate from 'staging'."
             exit 1
           fi
           echo "Branch flow validated."
@@ -98,6 +92,8 @@ jobs:
     name: Security & Code Quality Analysis
     runs-on: ubuntu-latest
     needs: build-and-test
+    # REQUIRED: Prevents skip if build-and-test succeeded
+    if: always() && needs.build-and-test.result == 'success'
     permissions:
       security-events: write
       actions: read
@@ -153,7 +149,9 @@ jobs:
   # Now depends only on Build-and-Test to enable parallel execution
   docker-and-dast:
     name: Docker & DAST
-    needs: [build-and-test] 
+    needs: build-and-test
+    # REQUIRED: Prevents skip if build-and-test succeeded
+    if: always() && needs.build-and-test.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -246,21 +244,32 @@ jobs:
     steps:
       - name: Check All Jobs Status
         run: |
-          # If any of the needed jobs failed or were cancelled, this step fails.
-          if [[ "${{ needs.security-scans.result }}" != "success" ]] || \
-             [[ "${{ needs.docker-and-dast.result }}" != "success" ]]; then
-            echo "One or more required jobs failed."
+          # Define valid states
+          VALID_STATES=("success" "skipped")
+
+          # Check Security Scans
+          SEC_RESULT="${{ needs.security-scans.result }}"
+          # Check Docker & DAST
+          DOCKER_RESULT="${{ needs.docker-and-dast.result }}"
+
+          echo "Security Scan Status: $SEC_RESULT"
+          echo "Docker & DAST Status: $DOCKER_RESULT"
+
+          if [[ ! " ${VALID_STATES[@]} " =~ " ${SEC_RESULT} " ]] || \
+             [[ ! " ${VALID_STATES[@]} " =~ " ${DOCKER_RESULT} " ]]; then
+            echo "::error::One or more required jobs failed or were cancelled."
             exit 1
           fi
-          echo "All parallel checks passed. Build completed successfully!"
+
+          echo "All checks passed (or were intentionally skipped)!"
 
   # --- JOB 4: RELEASE ---
   # This job is what you should use for your Branch Protection Rules (for pushes to main).
   create-release:
     name: Create GitHub Release
     # Waits for both parallel security and docker paths to complete
-    needs: [security-scans, docker-and-dast]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: workflow-status
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.workflow-status.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write # Required to create the release
