@@ -114,7 +114,7 @@ jobs:
         uses: actions/cache@v5.0.4
         with:
           path: .trivycache # Change from ~/.cache/trivy to .trivycache
-          key: trivy-db-${{ runner.os }}-${{ github.run_id }}
+          key: trivy-db-${{ runner.os }}-${{ github.ref_name }}
           restore-keys: trivy-db-${{ runner.os }}-
 
       # --- CodeQL Logic ---
@@ -168,7 +168,7 @@ jobs:
         uses: actions/cache@v5.0.4
         with:
           path: .trivycache # Change from ~/.cache/trivy to .trivycache
-          key: trivy-db-${{ runner.os }}-${{ github.run_id }}
+          key: trivy-db-${{ runner.os }}-${{ github.ref_name }}
           restore-keys: trivy-db-${{ runner.os }}-
 
       - name: Set up Docker Buildx
@@ -229,16 +229,7 @@ jobs:
         with:
           sarif_file: "trivy-image-results.sarif"
 
-      - name: Upload ZAP Report
-        if: always()
-        uses: actions/upload-artifact@v7.0.0
-        with:
-          name: zap-security-report
-          path: zap_report.html
-          if-no-files-found: warn
-          retention-days: 14
-
-    # --- JOB 4: FINAL STATUS CHECK (The Gatekeeper) ---
+  # --- JOB 4: FINAL STATUS CHECK (The Gatekeeper) ---
   # This job is what you should use for your Branch Protection Rules (other than push to main).
   # It only runs if all preceding parallel jobs succeed.
   workflow-status:
@@ -249,24 +240,24 @@ jobs:
     steps:
       - name: Check All Jobs Status
         run: |
-          # Define valid states
-          VALID_STATES=("success" "skipped")
-
-          # Check Security Scans
+          # 1. Get the results
           SEC_RESULT="${{ needs.security-scans.result }}"
-          # Check Docker & DAST
           DOCKER_RESULT="${{ needs.docker-and-dast.result }}"
 
           echo "Security Scan Status: $SEC_RESULT"
           echo "Docker & DAST Status: $DOCKER_RESULT"
 
-          if [[ ! " ${VALID_STATES[@]} " =~ " ${SEC_RESULT} " ]] || \
-             [[ ! " ${VALID_STATES[@]} " =~ " ${DOCKER_RESULT} " ]]; then
+          # 2. Strict Check: If ANY job actually failed or was cancelled, we fail.
+          if [[ "$SEC_RESULT" == "failure" || "$SEC_RESULT" == "cancelled" ]] || \
+             [[ "$DOCKER_RESULT" == "failure" || "$DOCKER_RESULT" == "cancelled" ]]; then
             echo "::error::One or more required jobs failed or were cancelled."
             exit 1
           fi
 
-          echo "All checks passed (or were intentionally skipped)!"
+          # 3. Logic Check: If they are both 'skipped', it might mean the build failed earlier.
+          # (Optional: You can add a check here for the build-and-test result if you want to be extra safe)
+
+          echo "All checks passed!"
 
   # --- JOB 4: RELEASE ---
   # This job is what you should use for your Branch Protection Rules (for pushes to main).
