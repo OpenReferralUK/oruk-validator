@@ -26,6 +26,7 @@ permissions:
   packages: write
   security-events: write
   actions: read
+  id-token: write
 
 jobs:
   # --- JOB 0: BRANCH GATE ---
@@ -74,11 +75,12 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5.5.2
         with:
+          use_oidc: true # ADD THIS LINE
           directory: ./coverage
           fail_ci_if_error: false
 
       - name: Upload test artifacts
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7.0.0
         with:
           name: test-results
