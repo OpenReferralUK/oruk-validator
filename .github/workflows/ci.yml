@@ -208,7 +208,27 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+   # --- JOB 4: FINAL STATUS CHECK (The Gatekeeper) ---
+  # This job is what you should use for your Branch Protection Rules (other than push to main).
+  # It only runs if all preceding parallel jobs succeed.
+  workflow-status:
+    name: Final Workflow Status
+    needs: [security-scans, docker-and-dast]
+    runs-on: ubuntu-latest
+    if: always() # Ensures this runs even if others are skipped or fail so we can evaluate them
+    steps:
+      - name: Check All Jobs Status
+        run: |
+          # If any of the needed jobs failed or were cancelled, this step fails.
+          if [[ "${{ needs.security-scans.result }}" != "success" ]] || \
+             [[ "${{ needs.docker-and-dast.result }}" != "success" ]]; then
+            echo "One or more required jobs failed."
+            exit 1
+          fi
+          echo "All parallel checks passed. Build completed successfully!"
+
   # --- JOB 4: RELEASE ---
+  # This job is what you should use for your Branch Protection Rules (for pushes to main).
   create-release:
     name: Create GitHub Release
     # Waits for both parallel security and docker paths to complete
