@@ -213,6 +213,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           artifact_name: "zap-security-report"
           allow_issue_writing: true
+          cmd_options: "-a" # This tells ZAP to include alpha/informational alerts but not fail
 
       - name: Stop App
         if: always()
@@ -229,7 +230,7 @@ jobs:
         uses: actions/upload-artifact@v7.0.0
         with:
           name: zap-security-report
-          path: zap_security-report.html
+          path: zap_report.html
           if-no-files-found: warn
           retention-days: 14
 
