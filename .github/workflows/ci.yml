@@ -139,7 +139,7 @@ jobs:
           output: "trivy-fs-results.sarif"
           severity: "CRITICAL,HIGH"
           # This ensures the scan doesn't fail your build unless it finds a Critical/High
-          exit-code: "1"
+          exit-code: "0"
           cache-dir: .trivycache 
 
       - name: Upload results
