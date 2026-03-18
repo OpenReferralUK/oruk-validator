@@ -111,10 +111,10 @@ jobs:
         if: matrix.scan == 'trivy-fs'
         uses: actions/cache@v5.0.4
         with:
-          path: ~/.cache/trivy
+          path: .trivycache # Change from ~/.cache/trivy to .trivycache
           key: trivy-db-${{ runner.os }}-${{ github.run_id }}
           restore-keys: trivy-db-${{ runner.os }}-
-
+l
       # --- CodeQL Logic ---
       - name: Initialize CodeQL
         if: matrix.scan == 'codeql'
@@ -138,6 +138,7 @@ jobs:
           severity: "CRITICAL,HIGH"
           # This ensures the scan doesn't fail your build unless it finds a Critical/High
           exit-code: "1"
+          cache-dir: .trivycache 
 
       - name: Upload results
         uses: github/codeql-action/upload-sarif@v4.32.6
@@ -164,7 +165,7 @@ jobs:
       - name: Cache Trivy DB
         uses: actions/cache@v5.0.4
         with:
-          path: ~/.cache/trivy
+          path: .trivycache # Change from ~/.cache/trivy to .trivycache
           key: trivy-db-${{ runner.os }}-${{ github.run_id }}
           restore-keys: trivy-db-${{ runner.os }}-
 
@@ -188,6 +189,7 @@ jobs:
           format: "sarif"
           output: "trivy-image-results.sarif"
           severity: "CRITICAL,HIGH"
+          cache-dir: .trivycache 
 
       - name: Run App for ZAP
         run: docker run -d -p 5000:80 --name test-app my-app:local
