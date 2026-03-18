@@ -14,7 +14,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: "10.0.x"
-  # This tells the runner to use Node 22 for all actions, silencing the warnings
+  # Fixes the "Node.js 20 actions are deprecated" warnings
   ACTIONS_RUNNER_FORCED_INTERNAL_NODE_VERSION: "node22"
 
 defaults:
@@ -65,7 +65,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # --- JOB 2: SECURITY & CODE QUALITY (Parallel) ---
+  # --- JOB 2: SECURITY & CODE QUALITY ---
+  # Runs in parallel with Docker & DAST
   security-scans:
     name: Security & Code Quality Analysis
     runs-on: ubuntu-latest
@@ -96,7 +97,7 @@ jobs:
         if: matrix.scan == 'codeql'
         uses: github/codeql-action/init@v4.32.6
         with:
-          languages: csharp # Hardcoded here for clarity
+          languages: csharp
           build-mode: none
 
       - name: Perform CodeQL Analysis
@@ -121,10 +122,11 @@ jobs:
         with:
           sarif_file: trivy-fs-results.sarif
 
-  # --- JOB 4: DOCKER & DAST ---
+  # --- JOB 3: DOCKER & DAST ---
+  # Now depends only on Build-and-Test to enable parallel execution
   docker-and-dast:
-    name: Docker & Dynamic Application Security Testing (DAST)
-    needs: [security-scans]
+    name: Docker & DAST
+    needs: [build-and-test] 
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -182,7 +184,7 @@ jobs:
         uses: zaproxy/action-baseline@v0.15.0
         with:
           target: "http://localhost:5000"
-          fail_action: false 
+          fail_action: false # Changed to false so warnings don't break the build
           token: ${{ secrets.GITHUB_TOKEN }}
           artifact_name: "zap-security-report"
           allow_issue_writing: true
@@ -206,9 +208,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # --- JOB 4: RELEASE ---
   create-release:
     name: Create GitHub Release
-    needs: [docker-and-dast]
+    # Waits for both parallel security and docker paths to complete
+    needs: [security-scans, docker-and-dast]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
