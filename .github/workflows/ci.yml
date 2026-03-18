@@ -114,7 +114,7 @@ jobs:
           path: .trivycache # Change from ~/.cache/trivy to .trivycache
           key: trivy-db-${{ runner.os }}-${{ github.run_id }}
           restore-keys: trivy-db-${{ runner.os }}-
-l
+
       # --- CodeQL Logic ---
       - name: Initialize CodeQL
         if: matrix.scan == 'codeql'
