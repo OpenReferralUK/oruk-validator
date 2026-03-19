@@ -213,7 +213,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           artifact_name: "zap-security-report"
           allow_issue_writing: true
-          cmd_options: "-a -v zap-security-report.sarif -z '--network host'"
+          cmd_options: "-a -z '-Dnetwork.host=true'"
 
       - name: Stop App
         if: always()
@@ -232,7 +232,9 @@ jobs:
         uses: actions/upload-artifact@v7.0.0
         with:
           name: zap-security-report
-          path: report.html
+          path: |
+            report.html
+            report.json
           retention-days: 7
           if-no-files-found: warn
 
