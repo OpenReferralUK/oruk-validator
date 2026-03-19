@@ -188,6 +188,12 @@ jobs:
           severity: "CRITICAL,HIGH"
           cache-dir: .trivycache
 
+      - name: Upload Trivy Image SARIF
+        uses: github/codeql-action/upload-sarif@v4.32.6
+        if: always() && hashFiles('trivy-image-results.sarif') != ''
+        with:
+          sarif_file: trivy-image-results.sarif
+          
       - name: Run App for ZAP
         run: docker run -d -p 5000:80 --name test-app my-app:local
 
@@ -218,14 +224,6 @@ jobs:
       - name: Stop App
         if: always()
         run: docker stop test-app && docker rm test-app
-
-      - name: Upload Security Scan Results
-        uses: github/codeql-action/upload-sarif@v4.32.6
-        if: always()
-        with:
-          sarif_file: |
-            zap-security-report.sarif
-            trivy-image-results.sarif
 
   # --- JOB 4: FINAL STATUS CHECK (The Gatekeeper) ---
   # This job is what you should use for your Branch Protection Rules.
