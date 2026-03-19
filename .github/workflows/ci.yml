@@ -213,7 +213,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           artifact_name: "zap-security-report"
           allow_issue_writing: true
-          cmd_options: "-a -v zap-security-report.sarif -z '-Dnetwork.host=true'"
+          cmd_options: "-a -v zap-security-report.sarif -z '--network host'"
 
       - name: Stop App
         if: always()
