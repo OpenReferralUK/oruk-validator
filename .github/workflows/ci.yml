@@ -213,7 +213,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           artifact_name: "zap-security-report"
           allow_issue_writing: true
-          cmd_options: '-a -v zap-security-report.sarif"' # This tells ZAP to include alpha/informational alerts but not fail
+          cmd_options: "-a -v zap-security-report.sarif -z '-Dnetwork.host=true'"
+
       - name: Stop App
         if: always()
         run: docker stop test-app && docker rm test-app
@@ -231,7 +232,7 @@ jobs:
         uses: actions/upload-artifact@v7.0.0
         with:
           name: zap-security-report
-          path: zap-reports/report.html
+          path: report.html
           retention-days: 7
           if-no-files-found: warn
 
