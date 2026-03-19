@@ -213,7 +213,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           artifact_name: "zap-security-report"
           allow_issue_writing: true
-          cmd_options: "-a -z '-Dnetwork.host=true'"
+          cmd_options: '-a'
 
       - name: Stop App
         if: always()
@@ -226,17 +226,6 @@ jobs:
           sarif_file: |
             zap-security-report.sarif
             trivy-image-results.sarif
-
-      - name: Upload ZAP Report
-        if: always()
-        uses: actions/upload-artifact@v7.0.0
-        with:
-          name: zap-security-report
-          path: |
-            report.html
-            report.json
-          retention-days: 7
-          if-no-files-found: warn
 
   # --- JOB 4: FINAL STATUS CHECK (The Gatekeeper) ---
   # This job is what you should use for your Branch Protection Rules.
