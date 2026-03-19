@@ -108,7 +108,7 @@ jobs:
       # --- TRIVY FS SCAN ---
       - name: Cache Trivy DB
         if: matrix.scan == 'trivy-fs'
-        uses: actions/cache@v4 # Use stable v4
+        uses: actions/cache@v5.0.4
         with:
           path: .trivycache
           key: trivy-db-fs-${{ runner.os }}-${{ github.ref_name }}
@@ -158,14 +158,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
 
-      # 1. Cache the Trivy DB so the Image Scan is fast
-      - name: Cache Trivy DB
-        uses: actions/cache@v5.0.4
-        with:
-          path: .trivycache # Change from ~/.cache/trivy to .trivycache
-          key: trivy-db-${{ runner.os }}-${{ github.ref_name }}
-          restore-keys: trivy-db-${{ runner.os }}-
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.0.0
 
@@ -178,6 +170,14 @@ jobs:
           tags: my-app:local
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # 1. Cache the Trivy DB so the Image Scan is fast
+      - name: Cache Trivy DB
+        uses: actions/cache@v5.0.4
+        with:
+          path: .trivycache # Change from ~/.cache/trivy to .trivycache
+          key: trivy-db-${{ runner.os }}-${{ github.ref_name }}
+          restore-keys: trivy-db-${{ runner.os }}-
 
       - name: Trivy Image Scan
         uses: aquasecurity/trivy-action@0.35.0
@@ -198,6 +198,7 @@ jobs:
               echo "App is ready"
               exit 0
             fi
+            echo "Waiting for app... ($i/30)"
             sleep 2
           done
           echo "App failed readiness check"
@@ -218,14 +219,25 @@ jobs:
         if: always()
         run: docker stop test-app && docker rm test-app
 
-      - name: Upload Security Results
+      - name: Upload Security Scan Results
         uses: github/codeql-action/upload-sarif@v4.32.6
         if: always()
         with:
-          sarif_file: "trivy-image-results.sarif"
+          sarif_file: |
+            zap-security-report.sarif
+            trivy-image-results.sarif
+
+      - name: Upload ZAP Report
+        if: always()
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: zap-security-report
+          path: zap-reports/report.html
+          retention-days: 7
+          if-no-files-found: warn
 
   # --- JOB 4: FINAL STATUS CHECK (The Gatekeeper) ---
-  # This job is what you should use for your Branch Protection Rules (other than push to main).
+  # This job is what you should use for your Branch Protection Rules.
   # It only runs if all preceding parallel jobs succeed.
   workflow-status:
     name: Final Workflow Status
@@ -254,8 +266,7 @@ jobs:
 
           echo "All checks passed!"
 
-  # --- JOB 4: RELEASE ---
-  # This job is what you should use for your Branch Protection Rules (for pushes to main).
+  # --- JOB 5: RELEASE ---
   create-release:
     name: Create GitHub Release
     # Waits for both parallel security and docker paths to complete
