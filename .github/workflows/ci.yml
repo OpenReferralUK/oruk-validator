@@ -37,7 +37,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Cache NuGet packages
-        uses: actions/cache@v5.0.3
+        uses: actions/cache@v5.0.5
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets') }}
@@ -52,14 +52,14 @@ jobs:
         run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./coverage
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5.5.2
+        uses: codecov/codecov-action@v6.0.0
         with:
           directory: ./coverage
           fail_ci_if_error: false
 
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: test-results
           path: ./coverage
@@ -86,7 +86,7 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.32.6
+        uses: github/codeql-action/init@v4.35.2
         with:
           languages: ${{ matrix.language }}
           build-mode: none
@@ -95,7 +95,7 @@ jobs:
           dotnet restore OpenReferralApi.sln
           dotnet build OpenReferralApi.sln --configuration Release --no-restore --verbosity normal
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4.32.6
+        uses: github/codeql-action/analyze@v4.35.2
 
   # --- JOB 3: TRIVY FS ---
   security-scan-fs:
@@ -106,13 +106,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6.0.2
       - name: Cache Trivy database
-        uses: actions/cache@v5.0.3
+        uses: actions/cache@v5.0.5
         with:
           path: ~/.cache/trivy
           key: trivy-db-${{ github.run_id }}
           restore-keys: trivy-db-
       - name: Run Trivy (fs)
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -120,7 +120,7 @@ jobs:
           output: 'trivy-fs-results.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM,UNKNOWN'
       - name: Upload Trivy FS SARIF
-        uses: github/codeql-action/upload-sarif@v4.32.6
+        uses: github/codeql-action/upload-sarif@v4.35.2
         if: always()
         with:
           sarif_file: trivy-fs-results.sarif
@@ -138,7 +138,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.0.0
       - name: Login to GHCR
-        uses: docker/login-action@v4.0.0
+        uses: docker/login-action@v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -165,7 +165,7 @@ jobs:
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v7.0.0
+        uses: docker/build-push-action@v7.1.0
         with:
           context: .
           file: ./Dockerfile
@@ -196,20 +196,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6.0.2
       - name: Cache Trivy database
-        uses: actions/cache@v5.0.3
+        uses: actions/cache@v5.0.5
         with:
           path: ~/.cache/trivy
           key: trivy-db-${{ github.run_id }}
           restore-keys: trivy-db-
       - name: Login to GHCR
-        uses: docker/login-action@v4.0.0
+        uses: docker/login-action@v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy (image)
         id: trivy_scan
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
         with:
           image-ref: ${{ needs.docker-build.outputs.image_ref }}
@@ -218,7 +218,7 @@ jobs:
           severity: 'CRITICAL,HIGH,MEDIUM,UNKNOWN'
 
       - name: Upload Trivy Image SARIF
-        uses: github/codeql-action/upload-sarif@v4.32.6
+        uses: github/codeql-action/upload-sarif@v4.35.2
         if: always() && hashFiles('trivy-image-results.sarif') != ''
         with:
           sarif_file: trivy-image-results.sarif
@@ -232,7 +232,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6.0.2
       - name: Login to GHCR
-        uses: docker/login-action@v4.0.0
+        uses: docker/login-action@v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -279,7 +279,7 @@ jobs:
           docker run --rm --network zap-network -v ${{ github.workspace }}/zap-reports:/zap/wrk/:rw ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://app:80 -J report_json.json -I || true
       - name: Upload ZAP results
         if: always() && hashFiles('zap-reports/*') != ''
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: zap-scan-results
           path: zap-reports/
@@ -332,7 +332,7 @@ jobs:
           sleep 12
           curl --fail "${{ vars.HEALTH_ENDPOINT }}" || echo "⚠️ Production health check failed"
       - name: Create Release
-        uses: softprops/action-gh-release@v2.5.0
+        uses: softprops/action-gh-release@v3.0.0
         with:
           tag_name: v${{ github.run_number }}
           name: Release v${{ github.run_number }}
