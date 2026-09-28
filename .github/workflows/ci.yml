@@ -86,7 +86,7 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.38.1
+        uses: github/codeql-action/init@v4.38.2
         with:
           languages: ${{ matrix.language }}
           build-mode: none
@@ -95,7 +95,7 @@ jobs:
           dotnet restore OpenReferralApi.sln
           dotnet build OpenReferralApi.sln --configuration Release --no-restore --verbosity normal
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4.38.1
+        uses: github/codeql-action/analyze@v4.38.2
 
   # --- JOB 3: TRIVY FS ---
   security-scan-fs:
@@ -120,7 +120,7 @@ jobs:
           output: 'trivy-fs-results.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM,UNKNOWN'
       - name: Upload Trivy FS SARIF
-        uses: github/codeql-action/upload-sarif@v4.38.1
+        uses: github/codeql-action/upload-sarif@v4.38.2
         if: always()
         with:
           sarif_file: trivy-fs-results.sarif
@@ -218,7 +218,7 @@ jobs:
           severity: 'CRITICAL,HIGH,MEDIUM,UNKNOWN'
 
       - name: Upload Trivy Image SARIF
-        uses: github/codeql-action/upload-sarif@v4.38.1
+        uses: github/codeql-action/upload-sarif@v4.38.2
         if: always() && hashFiles('trivy-image-results.sarif') != ''
         with:
           sarif_file: trivy-image-results.sarif
