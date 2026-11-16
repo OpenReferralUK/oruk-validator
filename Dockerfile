@@ -1,10 +1,10 @@
-﻿# Build arguments for versioning and metadata
+# Build arguments for versioning and metadata
 ARG BUILD_VERSION=1.0.0
 ARG BUILD_DATE
 ARG VCS_REF
 
 # Base runtime image
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS base
 WORKDIR /app
 EXPOSE 80
 EXPOSE 443
@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Build stage
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 ARG BUILD_VERSION
 WORKDIR /src
 
